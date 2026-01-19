@@ -1,0 +1,15 @@
+#!/bin/sh
+set -e
+
+echo "Running pre-commit checks..."
+
+# Format check
+cargo fmt --all -- --check
+
+# Clippy
+cargo clippy --workspace --all-targets -- -D warnings
+
+# Tests
+cargo test --workspace --quiet
+
+echo "✅ Pre-commit checks passed"

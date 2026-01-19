@@ -1,0 +1,30 @@
+{
+  "type": "context_file",
+  "num_documents": 100,
+  "total_tokens": 98304,
+  "description": "100 climate change research documents with cross-references",
+  "sample_documents": [
+    {
+      "id": 1,
+      "title": "Carbon Capture Technologies",
+      "content": "Carbon capture and storage (CCS) is mentioned as a key mitigation strategy...",
+      "references": [12, 45, 78],
+      "topics": ["carbon_capture", "mitigation"]
+    },
+    {
+      "id": 2,
+      "title": "Renewable Energy Transition",
+      "content": "The transition to renewable energy sources like solar and wind is crucial...",
+      "references": [3, 56, 89],
+      "topics": ["renewable_energy", "mitigation"]
+    },
+    {
+      "id": 3,
+      "title": "Reforestation Initiatives",
+      "content": "Large-scale reforestation can sequester significant amounts of CO2...",
+      "references": [23, 67],
+      "topics": ["reforestation", "carbon_sequestration"]
+    }
+  ],
+  "note": "Full context would contain all 100 documents, truncated here for fixture size"
+}

@@ -1,0 +1,14 @@
+{
+  "query": "What is the time complexity of the sorting algorithm used in the data processing module?",
+  "context": "File: src/data/processor.rs\n```rust\npub fn process_data(items: Vec<Item>) -> Vec<Item> {\n    let mut sorted = items;\n    sorted.sort_by_key(|item| item.priority);\n    // ... more processing\n}\n```\n\nFile: src/data/mod.rs\n```rust\nmod processor;\nmod analyzer;\nmod validator;\n\npub use processor::process_data;\n```\n\nFile: src/data/analyzer.rs\n```rust\npub fn analyze(data: &[Item]) -> Analysis {\n    // Uses quicksort internally via std::sort\n    let mut sorted = data.to_vec();\n    sorted.sort();\n    // ...\n}\n```\n\n[... 47 more files from the repository ...]",
+  "max_iterations": 50,
+  "recursion_depth": 1,
+  "metadata": {
+    "dataset": "code_repo",
+    "query_id": 44,
+    "num_files": 50,
+    "total_tokens": 49152,
+    "language": "rust",
+    "task_type": "code_understanding"
+  }
+}

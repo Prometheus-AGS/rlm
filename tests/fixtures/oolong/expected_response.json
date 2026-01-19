@@ -1,0 +1,12 @@
+{
+  "answer": "The average sentiment across all 212 reviews is 0.67",
+  "metadata": {
+    "iterations": 15,
+    "recursive_calls": 0,
+    "total_tokens": 8500,
+    "duration": 12000,
+    "started_at": 1704067200,
+    "success": true
+  },
+  "repl_state": null
+}

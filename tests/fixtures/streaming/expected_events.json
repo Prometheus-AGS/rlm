@@ -1,0 +1,89 @@
+{
+  "description": "Expected event sequence for streaming validation",
+  "test_scenario": "Simple query with one REPL operation and recursive call",
+  "events": [
+    {
+      "type": "started",
+      "request_id": "test-request-001",
+      "timestamp": 1704067200,
+      "validation": "Must be first event"
+    },
+    {
+      "type": "context_chunk",
+      "index": 0,
+      "total": 1,
+      "size_tokens": 1024,
+      "validation": "Emitted during context offloading"
+    },
+    {
+      "type": "repl_op",
+      "iteration": 1,
+      "code": "context = load_context()",
+      "result": {
+        "status": "success",
+        "value": "Context loaded: 1024 tokens"
+      },
+      "validation": "First REPL operation"
+    },
+    {
+      "type": "chunk",
+      "content": "Let me analyze",
+      "finish_reason": null,
+      "validation": "LLM streaming starts"
+    },
+    {
+      "type": "chunk",
+      "content": " the context.",
+      "finish_reason": null,
+      "validation": "LLM streaming continues"
+    },
+    {
+      "type": "recursive_call",
+      "depth": 1,
+      "query": "What is the key metric?",
+      "parent_id": null,
+      "call_id": "recursive-001",
+      "validation": "Recursive call initiated"
+    },
+    {
+      "type": "chunk",
+      "content": " I need to check a sub-query.",
+      "finish_reason": null,
+      "validation": "LLM continues while recursive call pending"
+    },
+    {
+      "type": "recursive_result",
+      "call_id": "recursive-001",
+      "result": "The key metric is 42",
+      "tokens_used": 150,
+      "validation": "Recursive call completed"
+    },
+    {
+      "type": "chunk",
+      "content": " Based on the metric, the answer is clear.",
+      "finish_reason": "stop",
+      "validation": "Final LLM chunk"
+    },
+    {
+      "type": "done",
+      "answer": "The final answer based on the analysis",
+      "metadata": {
+        "iterations": 1,
+        "recursive_calls": 1,
+        "total_tokens": 1500,
+        "duration": 5000,
+        "started_at": 1704067200,
+        "success": true
+      },
+      "validation": "Must be final event"
+    }
+  ],
+  "validation_rules": [
+    "Started event must be first",
+    "Done or Error event must be last",
+    "REPL ops must have sequential iteration numbers",
+    "Recursive calls must have matching result events",
+    "Chunks can be interleaved with other events",
+    "Context chunks appear during offloading phase"
+  ]
+}

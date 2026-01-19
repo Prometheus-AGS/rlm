@@ -1,0 +1,14 @@
+{
+  "type": "context_file",
+  "total_tokens": 32768,
+  "num_entities": 100,
+  "description": "100 entities with 3 attributes each (color, size, material)",
+  "sample_entities": [
+    { "id": 1, "attrs": { "color": "red", "size": "large", "material": "wood" } },
+    { "id": 2, "attrs": { "color": "blue", "size": "small", "material": "metal" } },
+    { "id": 3, "attrs": { "color": "red", "size": "medium", "material": "wood" } },
+    { "id": 4, "attrs": { "color": "green", "size": "large", "material": "plastic" } }
+  ],
+  "total_pairs": 4950,
+  "note": "Full context would contain all 100 entities, truncated here for fixture size"
+}

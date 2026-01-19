@@ -1,0 +1,12 @@
+{
+  "type": "context_file",
+  "total_tokens": 131072,
+  "num_items": 212,
+  "description": "212 product reviews with sentiment scores ranging from 0.0 to 1.0",
+  "sample_items": [
+    { "review_id": 1, "text": "Product is amazing! Sentiment: 0.95", "sentiment": 0.95 },
+    { "review_id": 2, "text": "Not bad, could be better. Sentiment: 0.45", "sentiment": 0.45 },
+    { "review_id": 3, "text": "Excellent quality and fast shipping. Sentiment: 0.92", "sentiment": 0.92 }
+  ],
+  "note": "Full context would contain all 212 reviews, truncated here for fixture size"
+}

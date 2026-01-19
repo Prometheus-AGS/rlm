@@ -1,0 +1,14 @@
+{
+  "query": "Based on the 100 documents about climate change, what are the top 3 most cited mitigation strategies?",
+  "context": "Document 1: Title: 'Carbon Capture Technologies'\nContent: Carbon capture and storage (CCS) is mentioned as a key mitigation strategy. References: [12, 45, 78]\n\nDocument 2: Title: 'Renewable Energy Transition'\nContent: The transition to renewable energy sources like solar and wind is crucial. References: [3, 56, 89]\n\nDocument 3: Title: 'Reforestation Initiatives'\nContent: Large-scale reforestation can sequester significant amounts of CO2. References: [23, 67]\n\n[... 97 more documents with cross-references ...]",
+  "max_iterations": 50,
+  "recursion_depth": 1,
+  "metadata": {
+    "dataset": "browsecomp",
+    "query_id": 74,
+    "num_documents": 100,
+    "task_type": "multi_hop_qa",
+    "complexity": "O(n log n)",
+    "requires_cross_reference": true
+  }
+}

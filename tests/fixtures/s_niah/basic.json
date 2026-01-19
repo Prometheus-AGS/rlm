@@ -1,0 +1,11 @@
+{
+  "query": "What is the special key hidden in the context?",
+  "context": "The quick brown fox jumps over the lazy dog. Lorem ipsum dolor sit amet, consectetur adipiscing elit. The special key is XK-2847-QP. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.",
+  "max_iterations": 50,
+  "recursion_depth": 1,
+  "metadata": {
+    "dataset": "s_niah",
+    "difficulty": "basic",
+    "context_size_tokens": 100
+  }
+}

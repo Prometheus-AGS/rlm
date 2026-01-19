@@ -1,0 +1,22 @@
+{
+  "type": "context_file",
+  "total_tokens": 49152,
+  "num_files": 50,
+  "language": "rust",
+  "description": "Rust codebase with data processing modules",
+  "sample_files": [
+    {
+      "path": "src/data/processor.rs",
+      "lines": 234,
+      "functions": ["process_data", "filter_items", "transform_batch"],
+      "snippet": "pub fn process_data(items: Vec<Item>) -> Vec<Item> {\n    let mut sorted = items;\n    sorted.sort_by_key(|item| item.priority);\n    // ...\n}"
+    },
+    {
+      "path": "src/data/analyzer.rs",
+      "lines": 187,
+      "functions": ["analyze", "compute_stats", "find_outliers"],
+      "snippet": "pub fn analyze(data: &[Item]) -> Analysis {\n    let mut sorted = data.to_vec();\n    sorted.sort();\n    // ...\n}"
+    }
+  ],
+  "note": "Full context would contain all 50 source files, truncated here for fixture size"
+}

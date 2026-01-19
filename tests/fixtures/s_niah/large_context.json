@@ -1,0 +1,12 @@
+{
+  "query": "Find the needle phrase in the haystack",
+  "context": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. THE NEEDLE IS HERE: OMEGA-7734-ALPHA. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. [... repeated text to reach 128K tokens ...]",
+  "max_iterations": 50,
+  "recursion_depth": 1,
+  "metadata": {
+    "dataset": "s_niah",
+    "difficulty": "large",
+    "context_size_tokens": 131072,
+    "needle_position": "middle"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "answer": "XK-2847-QP",
+  "metadata": {
+    "iterations": 2,
+    "recursive_calls": 0,
+    "total_tokens": 150,
+    "duration": 1200,
+    "started_at": 1704067200,
+    "success": true
+  },
+  "repl_state": null
+}

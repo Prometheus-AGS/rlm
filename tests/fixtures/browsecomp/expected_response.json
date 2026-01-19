@@ -1,0 +1,12 @@
+{
+  "answer": "The top 3 most cited mitigation strategies are: 1) Renewable energy transition (mentioned in 67 documents), 2) Carbon capture and storage (mentioned in 54 documents), 3) Reforestation and afforestation (mentioned in 48 documents)",
+  "metadata": {
+    "iterations": 28,
+    "recursive_calls": 3,
+    "total_tokens": 15200,
+    "duration": 32000,
+    "started_at": 1704067200,
+    "success": true
+  },
+  "repl_state": null
+}

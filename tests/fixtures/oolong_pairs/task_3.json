@@ -1,0 +1,15 @@
+{
+  "query": "Compare all pairs of entities and count how many pairs have overlapping attributes",
+  "context": "Entity A: {id: 1, attrs: [color:red, size:large, material:wood]}\nEntity B: {id: 2, attrs: [color:blue, size:small, material:metal]}\nEntity C: {id: 3, attrs: [color:red, size:medium, material:wood]}\nEntity D: {id: 4, attrs: [color:green, size:large, material:plastic]}\n[... 96 more entities with various attributes ...]",
+  "max_iterations": 50,
+  "recursion_depth": 1,
+  "metadata": {
+    "dataset": "oolong_pairs",
+    "task_id": 3,
+    "context_size_tokens": 32768,
+    "num_entities": 100,
+    "task_type": "pairwise_comparison",
+    "complexity": "O(n^2)",
+    "expected_pairs": 4950
+  }
+}

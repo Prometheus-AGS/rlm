@@ -1,0 +1,13 @@
+{
+  "query": "Aggregate all sentiment scores and calculate the average sentiment across all reviews",
+  "context": "Review 1: Product is amazing! Sentiment: 0.95\nReview 2: Not bad, could be better. Sentiment: 0.45\nReview 3: Excellent quality and fast shipping. Sentiment: 0.92\nReview 4: Disappointed with the product. Sentiment: 0.15\nReview 5: Meets expectations. Sentiment: 0.70\n[... 207 more reviews with sentiment scores ...]",
+  "max_iterations": 50,
+  "recursion_depth": 1,
+  "metadata": {
+    "dataset": "oolong",
+    "query_id": 212,
+    "context_size_tokens": 131072,
+    "task_type": "aggregation",
+    "complexity": "O(n)"
+  }
+}
