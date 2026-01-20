@@ -4,7 +4,7 @@
 # for production deployment with optimized size and security.
 
 # Build stage - use official Rust image with necessary build tools
-FROM rust:1.91.1-slim-bookworm AS builder
+FROM rust:1.92.0-slim-bookworm AS builder
 
 # Install system dependencies for building
 RUN apt-get update && apt-get install -y \
