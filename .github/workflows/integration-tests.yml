@@ -239,7 +239,7 @@ jobs:
         EOF
 
     - name: Upload coverage reports
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v6
       with:
         name: coverage-reports
         path: coverage/
@@ -354,7 +354,7 @@ jobs:
 
     - name: Upload live test artifacts
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v6
       with:
         name: live-test-reports
         path: |
@@ -428,7 +428,7 @@ jobs:
         echo "| BrowseComp | 85.2% | TBD | 🚧 |" >> benchmark-report.md
 
     - name: Upload benchmark results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v6
       with:
         name: benchmark-results
         path: benchmark-report.md
