@@ -6,5 +6,38 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[dependencies]
+rlm-core = { workspace = true }
+rlm-repl-rhai = { workspace = true }
+axum = { workspace = true }
+tokio = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+hyper = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yml = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+clap = { version = "4.5", features = ["derive", "env"] }
+figment = { version = "0.10", features = ["yaml", "env"] }
+regex = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+prometheus = "0.13"
+
+[dev-dependencies]
+axum-test = "15.0"
+
+[[bin]]
+name = "rlm-server"
+path = "src/main.rs"
+
 [lints]
 workspace = true

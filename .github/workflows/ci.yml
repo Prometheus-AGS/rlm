@@ -2,30 +2,311 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [ main, develop ]
   pull_request:
-    branches: [main]
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  # Disable incremental compilation for better cache performance
+  CARGO_INCREMENTAL: 0
+  # Enable sparse registry for faster builds
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
 
 jobs:
-  check:
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - stable
+          - beta
+          - nightly
+        include:
+          - rust: stable
+            can-fail: false
+          - rust: beta
+            can-fail: true
+          - rust: nightly
+            can-fail: true
+    continue-on-error: ${{ matrix.can-fail }}
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ matrix.rust }}
+        components: rustfmt, clippy
+    
+    - name: Cache dependencies
+      uses: Swatinem/rust-cache@v2
+      with:
+        # Cache key includes Cargo.lock content
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        # Additional cache directories
+        cache-directories: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+    
+    - name: Check formatting
+      run: cargo fmt --all -- --check
+      if: matrix.rust == 'stable'
+    
+    - name: Run clippy
+      run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      if: matrix.rust == 'stable'
+    
+    - name: Build workspace
+      run: cargo build --workspace --all-features
+    
+    - name: Run tests
+      run: cargo test --workspace --all-features
+      env:
+        # Mock API key for tests
+        RLM_LLM_API_KEY: "test-key-for-ci"
+    
+    - name: Run doc tests
+      run: cargo test --doc --workspace --all-features
+    
+    - name: Generate documentation
+      run: cargo doc --workspace --no-deps --all-features
+      if: matrix.rust == 'stable'
+
+  security:
+    name: Security Audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+    
+    - name: Install cargo-audit
+      run: cargo install cargo-audit --locked
+    
+    - name: Cache dependencies
+      uses: Swatinem/rust-cache@v2
+    
+    - name: Run security audit
+      run: cargo audit
+    
+    - name: Check for RUSTSEC advisories
+      run: cargo audit --deny warnings
 
-      - name: Check formatting
-        run: cargo fmt --all -- --check
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: llvm-tools-preview
+    
+    - name: Install cargo-llvm-cov
+      uses: taiki-e/install-action@cargo-llvm-cov
+    
+    - name: Cache dependencies
+      uses: Swatinem/rust-cache@v2
+    
+    - name: Generate code coverage
+      run: cargo llvm-cov --workspace --lcov --output-path lcov.info
+      env:
+        RLM_LLM_API_KEY: "test-key-for-coverage"
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        files: lcov.info
+        fail_ci_if_error: true
+        token: ${{ secrets.CODECOV_TOKEN }}
 
-      - name: Run clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+  benchmark:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+    
+    - name: Cache dependencies
+      uses: Swatinem/rust-cache@v2
+    
+    - name: Build benchmarks
+      run: cargo build --release --workspace --benches
+    
+    - name: Run benchmarks
+      run: cargo bench --workspace
+      env:
+        RLM_LLM_API_KEY: "test-key-for-benchmarks"
+    
+    - name: Store benchmark results
+      uses: benchmark-action/github-action-benchmark@v1
+      if: github.ref == 'refs/heads/main'
+      with:
+        tool: 'cargo'
+        output-file-path: target/criterion/*/base/estimates.json
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        auto-push: true
+        comment-on-alert: true
+        alert-threshold: '200%'
 
-      - name: Build
-        run: cargo build --workspace --all-features
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+    
+    - name: Cache dependencies
+      uses: Swatinem/rust-cache@v2
+    
+    - name: Build integration tests
+      run: cargo build --tests --workspace
+    
+    - name: Run integration tests
+      run: cargo test --workspace --test '*' -- --test-threads=1
+      env:
+        RLM_LLM_API_KEY: "test-key-for-integration"
+        REDIS_URL: "redis://localhost:6379"
+    
+    - name: Test golden fixtures
+      run: |
+        cd tests
+        cargo test --test golden_tests
+      env:
+        RLM_LLM_API_KEY: "test-key-for-golden-tests"
 
-      - name: Test
-        run: cargo test --workspace --all-features
+  wasm:
+    name: WASM Build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: wasm32-unknown-unknown
+    
+    - name: Install wasm-pack
+      run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+    
+    - name: Cache dependencies
+      uses: Swatinem/rust-cache@v2
+    
+    - name: Build WASM package
+      run: |
+        cd crates/rlm-ffi
+        wasm-pack build --target web --out-dir pkg
+    
+    - name: Test WASM package
+      run: |
+        cd crates/rlm-ffi
+        wasm-pack test --headless --firefox --chrome
 
-      - name: Doc
-        run: cargo doc --workspace --no-deps --all-features
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Cache Docker layers
+      uses: actions/cache@v3
+      with:
+        path: /tmp/.buildx-cache
+        key: ${{ runner.os }}-buildx-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-buildx-
+    
+    - name: Build Docker image
+      run: |
+        docker buildx build \
+          --cache-from=type=local,src=/tmp/.buildx-cache \
+          --cache-to=type=local,dest=/tmp/.buildx-cache-new,mode=max \
+          --tag rlm-server:ci \
+          --load .
+    
+    - name: Test Docker image
+      run: |
+        # Run container in background
+        docker run -d --name rlm-test -p 8080:8080 -e RLM_LLM_API_KEY=test-key rlm-server:ci
+        
+        # Wait for server to start
+        sleep 15
+        
+        # Test health endpoint
+        curl -f http://localhost:8080/health || exit 1
+        
+        # Test metrics endpoint
+        curl -f http://localhost:8080/metrics || exit 1
+        
+        # Clean up
+        docker stop rlm-test
+        docker rm rlm-test
+    
+    - name: Move cache
+      run: |
+        rm -rf /tmp/.buildx-cache
+        mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
+  validate-examples:
+    name: Validate Examples
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+    
+    - name: Cache dependencies
+      uses: Swatinem/rust-cache@v2
+    
+    - name: Build examples
+      run: cargo build --examples --workspace
+    
+    - name: Test examples compile
+      run: |
+        for example in examples/*.rs; do
+          if [ -f "$example" ]; then
+            echo "Testing example: $example"
+            cargo check --example "$(basename "$example" .rs)"
+          fi
+        done
+    
+    - name: Run example tests
+      run: cargo test --examples --workspace
+      env:
+        RLM_LLM_API_KEY: "test-key-for-examples"

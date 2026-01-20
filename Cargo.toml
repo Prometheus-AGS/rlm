@@ -6,6 +6,7 @@ members = [
     "crates/rlm-server",
     "crates/rlm-ffi",
     "crates/rlm-uar-adapter",
+    "crates/rlm-test-utils",
 ]
 
 [workspace.package]
@@ -37,7 +38,7 @@ anyhow = "1.0"
 
 # Logging
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "time"] }
 
 # Identifiers
 uuid = { version = "1.10", features = ["v4"] }
@@ -72,6 +73,7 @@ rlm-repl-rhai = { path = "crates/rlm-repl-rhai" }
 rlm-server = { path = "crates/rlm-server" }
 rlm-ffi = { path = "crates/rlm-ffi" }
 rlm-uar-adapter = { path = "crates/rlm-uar-adapter" }
+rlm-test-utils = { path = "crates/rlm-test-utils" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

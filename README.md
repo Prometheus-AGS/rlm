@@ -253,6 +253,8 @@ max_memory_mb = 512          # Memory limit
 
 ## 🧪 Testing
 
+### Unit and Integration Tests
+
 ```bash
 # Run all tests
 cargo test --workspace
@@ -266,6 +268,249 @@ cargo tarpaulin --workspace --out Html
 # Benchmark against paper results
 cargo bench --package rlm-core
 ```
+
+### 🔐 Integration Testing with Real LLM Providers
+
+The `rlm-test-utils` crate provides comprehensive integration testing capabilities with **real LLM providers** and **secure key vault management**. This enables 100% integration test coverage with actual OpenAI GPT-4/GPT-5 models.
+
+#### Supported Vault Providers
+
+| Provider | Use Case | Features |
+|----------|----------|----------|
+| **Local Files** | Development & CI | File-based secrets, fast setup |
+| **Supabase Vault** | Production | Database-backed, RLS policies, self-hosted/cloud |
+| **AWS Secrets Manager** | Enterprise | AWS native, fine-grained IAM |
+| **Azure Key Vault** | Enterprise | Azure native, AD integration |
+
+#### Quick Setup for Local Development
+
+1. **Create local secrets file:**
+```bash
+mkdir -p ~/.rlm/secrets
+cat > ~/.rlm/secrets/test-secrets.json << EOF
+{
+  "openai_api_key": "sk-proj-your-openai-key-here",
+  "anthropic_api_key": "sk-ant-your-anthropic-key-here"
+}
+EOF
+```
+
+2. **Set environment variable:**
+```bash
+export RLM_LOCAL_SECRETS_FILE="~/.rlm/secrets/test-secrets.json"
+```
+
+3. **Run integration tests:**
+```bash
+# Run with local vault (default)
+cargo test --package rlm-test-utils
+
+# Run with all vault providers
+cargo test --package rlm-test-utils --features all-providers
+```
+
+#### Supabase Vault Setup (Recommended)
+
+Supabase provides the most comprehensive vault solution with database-backed storage, Row Level Security (RLS), and support for both self-hosted and cloud installations.
+
+1. **Environment variables:**
+```bash
+export SUPABASE_URL="https://your-project.supabase.co"
+export SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
+export SUPABASE_SECRETS_TABLE="vault_secrets"  # optional
+```
+
+2. **Initialize and store secrets:**
+```rust
+use rlm_test_utils::SupabaseVaultProvider;
+
+#[tokio::test]
+async fn setup_supabase_vault() {
+    let vault = SupabaseVaultProvider::from_env().await.unwrap();
+
+    // Initialize the secrets table with RLS policies
+    vault.init_table().await.unwrap();
+
+    // Store your OpenAI API key securely
+    vault.store_secret("openai_api_key", "sk-proj-your-key").await.unwrap();
+    vault.store_secret("anthropic_api_key", "sk-ant-your-key").await.unwrap();
+}
+```
+
+3. **Run tests with Supabase:**
+```bash
+cargo test --package rlm-test-utils --features supabase-vault
+```
+
+#### AWS Secrets Manager Setup
+
+1. **Configure AWS credentials:**
+```bash
+export AWS_REGION="us-west-2"
+# Use AWS CLI: aws configure
+# Or use environment variables: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+```
+
+2. **Create secrets in AWS:**
+```bash
+aws secretsmanager create-secret \
+    --name "openai_api_key" \
+    --secret-string "sk-proj-your-openai-key"
+
+aws secretsmanager create-secret \
+    --name "anthropic_api_key" \
+    --secret-string "sk-ant-your-anthropic-key"
+```
+
+3. **Run tests:**
+```bash
+cargo test --package rlm-test-utils --features aws-secrets
+```
+
+#### Azure Key Vault Setup
+
+1. **Environment variables:**
+```bash
+export AZURE_KEYVAULT_URL="https://your-vault.vault.azure.net/"
+# Use Azure CLI: az login
+# Or set: AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID
+```
+
+2. **Create secrets in Azure:**
+```bash
+az keyvault secret set --vault-name "your-vault" \
+    --name "openai-api-key" --value "sk-proj-your-openai-key"
+
+az keyvault secret set --vault-name "your-vault" \
+    --name "anthropic-api-key" --value "sk-ant-your-anthropic-key"
+```
+
+3. **Run tests:**
+```bash
+cargo test --package rlm-test-utils --features azure-keyvault
+```
+
+#### Comprehensive Integration Testing Example
+
+```rust
+use rlm_test_utils::{
+    TestFramework, LlmTestFramework, VaultFactory,
+    OpenAiTestProvider, AccuracyEvaluator, PerformanceEvaluator,
+    MarkdownReportGenerator, LlmTestProviderConfig,
+};
+
+#[tokio::test]
+async fn comprehensive_rlm_integration_test() {
+    // 1. Initialize secure vault (auto-detects provider from environment)
+    let vault = VaultFactory::from_env().await.unwrap();
+
+    // 2. Create OpenAI test provider with real API
+    let config = LlmTestProviderConfig {
+        model: "gpt-4".to_string(),
+        api_key_vault_key: "openai_api_key".to_string(),
+        max_tokens: Some(500),
+        temperature: Some(0.1),
+        rate_limit_rps: 1.0, // Respect rate limits
+        max_retries: 3,
+    };
+
+    let provider = OpenAiTestProvider::new(config, vault.clone()).await.unwrap();
+    let framework = LlmTestFramework::new(Arc::new(provider), vault);
+
+    // 3. Execute RLM request with real LLM
+    let request = RlmRequest {
+        query: "What is the main theme of the provided context?".to_string(),
+        context: "Long document content here...".to_string(),
+        max_iterations: 10,
+        recursion_depth: 1,
+        metadata: HashMap::new(),
+    };
+
+    let response = framework.execute_test(&request).await.unwrap();
+
+    // 4. Evaluate response quality
+    let accuracy = AccuracyEvaluator::fuzzy(0.8, vec![
+        "theme".to_string(),
+        "main idea".to_string(),
+    ]);
+    let result = accuracy.evaluate_response(&request, &response).await.unwrap();
+    assert!(result.quality_score > 0.8);
+
+    // 5. Generate comprehensive report
+    let report = framework.generate_report("RLM Integration Test").await.unwrap();
+    let generator = MarkdownReportGenerator::new();
+    let markdown = generator.generate_report(&report).await.unwrap();
+
+    tokio::fs::write("integration-test-report.md", markdown).await.unwrap();
+}
+```
+
+#### GitHub Actions CI/CD Setup
+
+The framework includes automated testing workflows:
+
+```yaml
+# .github/workflows/integration-tests.yml
+name: RLM Integration Tests
+on: [push, pull_request, schedule]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        vault: [local, supabase, aws]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - name: Run Integration Tests
+        env:
+          # Local vault
+          RLM_LOCAL_SECRETS_FILE: ${{ secrets.LOCAL_SECRETS_FILE }}
+
+          # Supabase vault
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+          # AWS vault
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: us-west-2
+
+          # API Keys (stored in your vault)
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          cargo test --package rlm-test-utils --features ${{ matrix.vault }}-vault
+```
+
+#### Cost Management and Safety
+
+The testing framework includes built-in cost controls:
+
+```rust
+use rlm_test_utils::CostEvaluator;
+
+let cost_evaluator = CostEvaluator::openai_gpt4()
+    .with_daily_budget(25.0)     // $25 daily limit
+    .with_max_cost_per_test(0.10); // $0.10 per test limit
+
+// Automatic cost tracking and budget enforcement
+let cost_result = cost_evaluator.evaluate_response(&request, &response).await?;
+println!("Test cost: ${:.4}", cost_result.metadata.get("total_cost").unwrap());
+```
+
+#### Security Features
+
+- 🔐 **API keys never exposed** in logs, error messages, or console output
+- 🚀 **Encrypted at rest** (vault provider dependent)
+- 🔒 **Encrypted in transit** via TLS
+- 📝 **Audit logging** for key access
+- 🛡️ **Row-level security** for database vaults (Supabase)
+- 🔄 **Key rotation** support
 
 ### Golden Test Fixtures
 

@@ -1,0 +1,490 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://rlm-server.example.com/schemas/rlm-events.json",
+  "title": "RLM Event Types",
+  "description": "JSON Schema definitions for RLM-specific Server-Sent Events",
+  "definitions": {
+    "RlmEvent": {
+      "type": "object",
+      "discriminator": {
+        "propertyName": "type"
+      },
+      "required": ["id", "object", "created", "data"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique event identifier",
+          "example": "rlm-event-12345"
+        },
+        "object": {
+          "type": "string",
+          "enum": ["rlm.processing.chunk"],
+          "description": "Event object type"
+        },
+        "created": {
+          "type": "integer",
+          "description": "Unix timestamp of event creation",
+          "example": 1677652288
+        },
+        "data": {
+          "oneOf": [
+            { "$ref": "#/definitions/ReplOpEvent" },
+            { "$ref": "#/definitions/RecursiveCallEvent" },
+            { "$ref": "#/definitions/ContextChunkEvent" },
+            { "$ref": "#/definitions/ProgressEvent" },
+            { "$ref": "#/definitions/CompletionEvent" },
+            { "$ref": "#/definitions/ErrorEvent" }
+          ]
+        }
+      }
+    },
+
+    "ReplOpEvent": {
+      "type": "object",
+      "required": ["type", "iteration", "code", "result"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "repl_operation"
+        },
+        "iteration": {
+          "type": "integer",
+          "description": "REPL operation iteration number",
+          "minimum": 1
+        },
+        "code": {
+          "type": "string",
+          "description": "Rhai code executed in REPL",
+          "example": "let result = context.substring(0, 1000);"
+        },
+        "result": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["status", "value"],
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "const": "success"
+                },
+                "value": {
+                  "type": "string",
+                  "description": "Successful execution result"
+                },
+                "execution_time_ms": {
+                  "type": "integer",
+                  "description": "Execution duration in milliseconds"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["status", "error"],
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "const": "error"
+                },
+                "error": {
+                  "type": "string",
+                  "description": "Error message from failed execution"
+                },
+                "error_type": {
+                  "type": "string",
+                  "enum": ["syntax_error", "runtime_error", "timeout_error"],
+                  "description": "Category of REPL error"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+
+    "RecursiveCallEvent": {
+      "type": "object",
+      "required": ["type", "call_id", "depth", "status"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "recursive_call"
+        },
+        "call_id": {
+          "type": "string",
+          "description": "Unique identifier for this recursive call",
+          "example": "call-abc123"
+        },
+        "parent_call_id": {
+          "type": "string",
+          "description": "Identifier of parent call (if any)",
+          "example": "call-def456"
+        },
+        "depth": {
+          "type": "integer",
+          "description": "Recursion depth (0 for root call)",
+          "minimum": 0,
+          "maximum": 20
+        },
+        "status": {
+          "type": "string",
+          "enum": ["started", "completed", "failed"],
+          "description": "Current status of the recursive call"
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Prompt sent to sub-LLM (truncated for brevity)",
+          "maxLength": 200
+        },
+        "model": {
+          "type": "string",
+          "description": "Model used for this recursive call",
+          "example": "gpt-4"
+        },
+        "tokens": {
+          "type": "object",
+          "properties": {
+            "prompt_tokens": {
+              "type": "integer",
+              "description": "Tokens in the prompt"
+            },
+            "completion_tokens": {
+              "type": "integer",
+              "description": "Tokens in the completion"
+            },
+            "total_tokens": {
+              "type": "integer",
+              "description": "Total tokens for this call"
+            }
+          }
+        },
+        "duration_ms": {
+          "type": "integer",
+          "description": "Processing time for this call",
+          "minimum": 0
+        }
+      }
+    },
+
+    "ContextChunkEvent": {
+      "type": "object",
+      "required": ["type", "chunk_id", "status"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "context_processing"
+        },
+        "chunk_id": {
+          "type": "string",
+          "description": "Unique identifier for this context chunk",
+          "example": "chunk-001"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["loading", "processing", "completed"],
+          "description": "Current processing status of the chunk"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "description": "Size of context chunk in bytes",
+          "minimum": 0
+        },
+        "position": {
+          "type": "object",
+          "properties": {
+            "start": {
+              "type": "integer",
+              "description": "Starting byte position in original context"
+            },
+            "end": {
+              "type": "integer",
+              "description": "Ending byte position in original context"
+            }
+          }
+        },
+        "processing_strategy": {
+          "type": "string",
+          "enum": ["direct", "decomposition", "aggregation"],
+          "description": "Strategy used for processing this chunk"
+        }
+      }
+    },
+
+    "ProgressEvent": {
+      "type": "object",
+      "required": ["type", "phase", "progress"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "progress"
+        },
+        "phase": {
+          "type": "string",
+          "enum": [
+            "context_loading",
+            "context_analysis",
+            "recursive_processing",
+            "result_aggregation",
+            "response_generation"
+          ],
+          "description": "Current processing phase"
+        },
+        "progress": {
+          "type": "number",
+          "description": "Progress percentage (0.0 to 1.0)",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable progress message",
+          "example": "Processing context chunk 3 of 7"
+        },
+        "estimated_completion_ms": {
+          "type": "integer",
+          "description": "Estimated time to completion in milliseconds",
+          "minimum": 0
+        },
+        "current_operations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of currently active operations",
+          "example": ["recursive_call_depth_2", "repl_execution", "context_chunking"]
+        }
+      }
+    },
+
+    "CompletionEvent": {
+      "type": "object",
+      "required": ["type", "status"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "completion"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["success", "partial_success", "failed"],
+          "description": "Final completion status"
+        },
+        "summary": {
+          "type": "object",
+          "properties": {
+            "total_duration_ms": {
+              "type": "integer",
+              "description": "Total processing time"
+            },
+            "tokens_used": {
+              "type": "object",
+              "properties": {
+                "prompt_tokens": {
+                  "type": "integer"
+                },
+                "completion_tokens": {
+                  "type": "integer"
+                },
+                "recursive_tokens": {
+                  "type": "integer",
+                  "description": "Tokens used in recursive calls"
+                },
+                "total_tokens": {
+                  "type": "integer"
+                }
+              }
+            },
+            "recursive_calls": {
+              "type": "object",
+              "properties": {
+                "total_calls": {
+                  "type": "integer"
+                },
+                "max_depth": {
+                  "type": "integer"
+                },
+                "successful_calls": {
+                  "type": "integer"
+                },
+                "failed_calls": {
+                  "type": "integer"
+                }
+              }
+            },
+            "context_processing": {
+              "type": "object",
+              "properties": {
+                "total_chunks": {
+                  "type": "integer"
+                },
+                "context_size_bytes": {
+                  "type": "integer"
+                },
+                "repl_operations": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "ErrorEvent": {
+      "type": "object",
+      "required": ["type", "error_type", "message"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "error"
+        },
+        "error_type": {
+          "type": "string",
+          "enum": [
+            "repl_error",
+            "llm_provider_error",
+            "context_processing_error",
+            "recursive_limit_exceeded",
+            "timeout_error",
+            "resource_exhaustion",
+            "configuration_error"
+          ],
+          "description": "Category of error that occurred"
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable error message"
+        },
+        "recoverable": {
+          "type": "boolean",
+          "description": "Whether the error is recoverable and processing can continue"
+        },
+        "context": {
+          "type": "object",
+          "description": "Additional error context for debugging",
+          "properties": {
+            "call_id": {
+              "type": "string",
+              "description": "Recursive call ID where error occurred (if applicable)"
+            },
+            "depth": {
+              "type": "integer",
+              "description": "Recursion depth where error occurred"
+            },
+            "phase": {
+              "type": "string",
+              "description": "Processing phase where error occurred"
+            },
+            "retry_count": {
+              "type": "integer",
+              "description": "Number of retry attempts made"
+            }
+          }
+        },
+        "suggested_action": {
+          "type": "string",
+          "description": "Suggested action for resolving the error",
+          "example": "Reduce context size or increase timeout limits"
+        }
+      }
+    }
+  },
+
+  "examples": {
+    "repl_operation_success": {
+      "id": "rlm-event-12345",
+      "object": "rlm.processing.chunk",
+      "created": 1677652288,
+      "data": {
+        "type": "repl_operation",
+        "iteration": 1,
+        "code": "let summary = context.split('\\n').filter(|line| line.contains('important')).join('\\n');",
+        "result": {
+          "status": "success",
+          "value": "Found 15 important lines in context",
+          "execution_time_ms": 45
+        }
+      }
+    },
+
+    "recursive_call_started": {
+      "id": "rlm-event-23456",
+      "object": "rlm.processing.chunk",
+      "created": 1677652289,
+      "data": {
+        "type": "recursive_call",
+        "call_id": "call-abc123",
+        "depth": 1,
+        "status": "started",
+        "prompt": "Analyze the following section and extract key points: [context subset]",
+        "model": "gpt-4"
+      }
+    },
+
+    "progress_update": {
+      "id": "rlm-event-34567",
+      "object": "rlm.processing.chunk",
+      "created": 1677652290,
+      "data": {
+        "type": "progress",
+        "phase": "recursive_processing",
+        "progress": 0.65,
+        "message": "Completed 13 of 20 recursive calls",
+        "estimated_completion_ms": 30000,
+        "current_operations": [
+          "recursive_call_depth_2",
+          "recursive_call_depth_3",
+          "result_aggregation"
+        ]
+      }
+    },
+
+    "completion_success": {
+      "id": "rlm-event-45678",
+      "object": "rlm.processing.chunk",
+      "created": 1677652291,
+      "data": {
+        "type": "completion",
+        "status": "success",
+        "summary": {
+          "total_duration_ms": 45000,
+          "tokens_used": {
+            "prompt_tokens": 150000,
+            "completion_tokens": 2500,
+            "recursive_tokens": 75000,
+            "total_tokens": 227500
+          },
+          "recursive_calls": {
+            "total_calls": 20,
+            "max_depth": 3,
+            "successful_calls": 20,
+            "failed_calls": 0
+          },
+          "context_processing": {
+            "total_chunks": 7,
+            "context_size_bytes": 5242880,
+            "repl_operations": 15
+          }
+        }
+      }
+    },
+
+    "error_recoverable": {
+      "id": "rlm-event-56789",
+      "object": "rlm.processing.chunk",
+      "created": 1677652292,
+      "data": {
+        "type": "error",
+        "error_type": "llm_provider_error",
+        "message": "Rate limit exceeded on recursive call",
+        "recoverable": true,
+        "context": {
+          "call_id": "call-def456",
+          "depth": 2,
+          "phase": "recursive_processing",
+          "retry_count": 1
+        },
+        "suggested_action": "Retrying with exponential backoff"
+      }
+    }
+  }
+}

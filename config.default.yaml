@@ -1,0 +1,116 @@
+# RLM Server Default Configuration
+#
+# This file provides default settings for the RLM server.
+# Copy to config.yaml and modify as needed.
+#
+# Configuration hierarchy (highest to lowest priority):
+# 1. Command-line arguments
+# 2. Environment variables (RLM_*)
+# 3. config.yaml (if present)
+# 4. config.default.yaml (this file)
+
+# HTTP Server Configuration
+server:
+  # Host address to bind to
+  host: "127.0.0.1"
+  # Port number to listen on
+  port: 8080
+  # Request timeout in seconds
+  timeout_seconds: 300
+  # Maximum request body size in bytes (10MB)
+  max_body_size: 10485760
+
+# RLM Processing Configuration
+rlm:
+  # Maximum context size in tokens
+  max_context_size: 1000000
+  # Maximum recursive depth for RLM calls
+  max_recursive_depth: 10
+  # Maximum iterations per execution
+  max_iterations: 100
+  # Default aggregation strategy ("first", "last", "concat", "summarize")
+  default_aggregation: "concat"
+  # Enable streaming responses
+  enable_streaming: true
+
+# LLM Provider Configuration
+llm:
+  # Provider type ("openai", "anthropic", "local")
+  provider: "openai"
+  # Model to use (provider-specific)
+  model: "gpt-4"
+  # API base URL (optional, uses provider default)
+  base_url: null
+  # API key (set via RLM_LLM_API_KEY environment variable)
+  api_key: null
+  # For Azure OpenAI
+  deployment_name: null
+  api_version: null
+  # Request parameters
+  temperature: 0.7
+  max_tokens: 4000
+  top_p: 1.0
+  # Timeout for LLM requests in seconds
+  timeout_seconds: 60
+
+# REPL Backend Configuration
+repl:
+  # Backend type ("rhai", "javascript")
+  backend: "rhai"
+  # Maximum code execution time in seconds
+  execution_timeout: 30
+  # Maximum memory usage in MB
+  max_memory_mb: 256
+  # Reset REPL state between requests
+  reset_between_requests: false
+
+# Logging Configuration
+logging:
+  # Log level ("error", "warn", "info", "debug", "trace")
+  level: "info"
+  # Log format ("json", "pretty", "compact")
+  format: "pretty"
+  # Enable request tracing
+  enable_tracing: true
+  # Log file path (optional)
+  file_path: null
+
+# Metrics and Monitoring
+metrics:
+  # Enable Prometheus metrics endpoint
+  enabled: true
+  # Metrics endpoint path
+  path: "/metrics"
+  # Include detailed request metrics
+  detailed_metrics: false
+
+# CORS Configuration
+cors:
+  # Allow all origins (set to specific domains in production)
+  allowed_origins: ["*"]
+  # Allowed methods
+  allowed_methods: ["GET", "POST", "OPTIONS"]
+  # Allowed headers
+  allowed_headers: ["Content-Type", "Authorization", "X-Request-ID"]
+  # Allow credentials
+  allow_credentials: false
+  # Max age for preflight cache
+  max_age_seconds: 3600
+
+# Rate Limiting (placeholder for Phase 6)
+rate_limiting:
+  # Enable rate limiting
+  enabled: false
+  # Requests per minute per IP
+  requests_per_minute: 100
+  # Burst capacity
+  burst_capacity: 10
+
+# Security (placeholder for Phase 6)
+security:
+  # Require API key for requests
+  require_api_key: false
+  # Valid API keys (set via environment)
+  api_keys: []
+  # Enable request signing
+  require_signature: false

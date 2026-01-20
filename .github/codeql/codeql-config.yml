@@ -1,0 +1,57 @@
+name: "RLM Security Analysis"
+
+# Disable built-in queries to reduce noise and focus on security
+disable-default-queries: false
+
+# Query packs to include
+packs:
+  - codeql/rust-queries
+  - codeql/javascript-queries
+  - codeql/security-queries
+
+# Additional queries for comprehensive security analysis
+queries:
+  - name: All security queries
+    uses: security-and-quality
+  - name: Extended security queries
+    uses: security-extended
+  - name: Maintainability queries
+    uses: maintainability
+
+# Paths to analyze
+paths:
+  - crates/
+  - examples/
+  - tests/
+  - scripts/
+
+# Paths to ignore
+paths-ignore:
+  - target/
+  - node_modules/
+  - "**/*.min.js"
+  - "**/test_fixtures/"
+  - "**/golden_datasets/"
+  - docs/
+  - .github/
+  - "**/*.md"
+  - "**/*.txt"
+  - Dockerfile*
+  - docker-compose*.yml
+
+# Query filters to reduce false positives
+query-filters:
+  - exclude:
+      id: rust/unused-variable
+      reason: "Many false positives in test code"
+  - exclude:
+      id: rust/dead-code
+      reason: "False positives in conditional compilation"
+
+# Analysis configuration
+analysis-filters:
+  - name: "Focus on security-critical paths"
+    include:
+      - "crates/rlm-core/src/"
+      - "crates/rlm-server/src/"
+      - "crates/rlm-repl-rhai/src/"

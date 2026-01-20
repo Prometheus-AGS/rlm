@@ -16,5 +16,8 @@ async-trait = { workspace = true }
 futures = { workspace = true }
 uuid = { workspace = true }
 
+[dev-dependencies]
+rlm-repl-rhai = { workspace = true }
+
 [lints]
 workspace = true

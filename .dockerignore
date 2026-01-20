@@ -1,0 +1,106 @@
+# Docker build context optimization
+# Exclude files and directories not needed for building the container
+
+# Build outputs
+target/
+Cargo.lock
+
+# Development files
+.git/
+.gitignore
+*.md
+README*
+LICENSE*
+CHANGELOG*
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Test and example files
+tests/
+examples/
+specs/
+docs/
+
+# CI/CD files
+.github/
+.gitlab-ci.yml
+.travis.yml
+.circleci/
+
+# Development configuration
+.env*
+config.yaml
+config.local.yaml
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.orig
+
+# Node.js (if any)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Python cache (if any)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Coverage reports
+coverage/
+*.lcov
+*.gcda
+*.gcno
+
+# Profiling data
+*.prof
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Docker files (don't include in build context recursively)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Kubernetes manifests
+k8s/
+kubernetes/
+*.yaml
+*.yml
+!config.default.yaml
+
+# Terraform
+*.tfstate
+*.tfplan
+.terraform/
+
+# Local development
+.env.local
+.env.development
+.env.test
+
+# Performance and debugging
+perf.data*
+flamegraph.svg
+*.profdata
+
+# Security
+*.key
+*.pem
+*.crt
+secrets/

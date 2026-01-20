@@ -1,1 +1,41 @@
+# Rust build artifacts
 /target
+debug/
+release/
+*.rs.bk
+*.rlib
+*.prof*
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+*.log.*
+
+# Environment and secrets
+.env*
+!.env.example
+
+# Testing artifacts
+coverage/
+test-results/
+
+# Temporary files
+*.tmp
+*.temp
+*.cache
+
+# RLM-specific
+# Golden test fixtures might be large - excluding any that are auto-generated
+tests/fixtures/generated/
+
+# Cache directories
+.cargo/registry/index/
+.cargo/registry/cache/

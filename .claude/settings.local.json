@@ -3,7 +3,21 @@
     "allow": [
       "mcp__tavily-mcp__tavily-search",
       "mcp__mcp-filesystem__directory_tree",
-      "mcp__mcp-filesystem__list_directory"
+      "mcp__mcp-filesystem__list_directory",
+      "mcp__mcp-filesystem__create_directory",
+      "mcp__mcp-filesystem__write_file",
+      "Bash(.specify/scripts/bash/check-prerequisites.sh:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(cargo check:*)",
+      "Bash(find:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo build:*)",
+      "Skill(speckit.implement)",
+      "Bash(tree:*)",
+      "mcp__mcp-filesystem__read_file",
+      "mcp__mcp-filesystem__grep_files",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo:*)"
     ]
   }
 }

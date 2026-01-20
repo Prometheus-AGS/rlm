@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Discussions
+    url: https://github.com/prometheus/rlm/discussions
+    about: Ask questions, share ideas, and discuss RLM with the community
+  - name: 📚 Documentation
+    url: https://docs.rlm.example.com
+    about: Read the official RLM documentation
+  - name: 🔒 Security Issues
+    url: https://github.com/prometheus/rlm/security/advisories
+    about: Report security vulnerabilities privately
