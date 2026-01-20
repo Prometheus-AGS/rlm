@@ -253,3 +253,10 @@ The implementation plan has been validated against the MIT paper (arXiv:2512.246
 - Simpler unidirectional streaming model
 - Browser-native support without additional protocols
 - Better alignment with HTTP/REST semantics
+
+## Active Technologies
+- Rust 1.75+ with #![forbid(unsafe_code)] + Axum (HTTP server), Tokio (async runtime), Rhai (REPL backend), Serde (serialization), Tracing (structured logging) (001-rlm-openai-server)
+- In-memory REPL state management with Rhai, no persistent storage required for core functionality (001-rlm-openai-server)
+
+## Recent Changes
+- 001-rlm-openai-server: Added Rust 1.75+ with #![forbid(unsafe_code)] + Axum (HTTP server), Tokio (async runtime), Rhai (REPL backend), Serde (serialization), Tracing (structured logging)

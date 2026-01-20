@@ -1,0 +1,115 @@
+# RLM Server Docker Compose Configuration
+#
+# This file provides different deployment scenarios for the RLM server:
+# - Development: Local development with volume mounts
+# - Production: Production-ready configuration with health checks
+# - Multi-backend: Example with multiple LLM providers
+
+version: '3.8'
+
+services:
+  # Main RLM server service
+  rlm-server:
+    build: .
+    container_name: rlm-server
+    ports:
+      - "8080:8080"
+    environment:
+      # Server configuration
+      - RLM_SERVER_HOST=0.0.0.0
+      - RLM_SERVER_PORT=8080
+
+      # LLM provider configuration (OpenAI)
+      - RLM_LLM_PROVIDER=openai
+      - RLM_LLM_MODEL=gpt-4
+      - RLM_LLM_API_KEY=${OPENAI_API_KEY:-}
+
+      # Processing configuration
+      - RLM_MAX_CONTEXT_SIZE=10000000
+      - RLM_MAX_RECURSIVE_DEPTH=10
+      - RLM_MAX_ITERATIONS=50
+
+      # Logging
+      - RLM_LOG_LEVEL=info
+      - RLM_LOG_FORMAT=json
+    volumes:
+      # Mount logs directory for persistence
+      - ./logs:/app/logs
+      # Optional: Mount custom config
+      - ./config.yaml:/app/config.yaml:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - rlm-network
+
+  # Optional: Redis for caching (if needed in future)
+  redis:
+    image: redis:7-alpine
+    container_name: rlm-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - rlm-network
+    profiles:
+      - with-cache
+
+  # Optional: Prometheus for metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: rlm-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - rlm-network
+    profiles:
+      - monitoring
+
+  # Optional: Grafana for metrics visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: rlm-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin123}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - rlm-network
+    profiles:
+      - monitoring
+    depends_on:
+      - prometheus
+
+networks:
+  rlm-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  prometheus-data:
+  grafana-data:

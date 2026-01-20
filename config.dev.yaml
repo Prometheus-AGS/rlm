@@ -1,0 +1,90 @@
+# RLM Server Development Configuration
+#
+# This configuration is optimized for local development with
+# debug settings, relaxed security, and development-friendly defaults.
+
+# HTTP Server Configuration
+server:
+  host: "0.0.0.0"
+  port: 8080
+  timeout_seconds: 60  # Shorter timeout for development
+  max_body_size: 10485760  # 10MB
+
+# RLM Processing Configuration
+rlm:
+  max_context_size: 1000000  # 1M tokens for development
+  max_recursive_depth: 5     # Lower depth for faster iteration
+  max_iterations: 25         # Fewer iterations for development
+  default_aggregation: "concat"
+  enable_streaming: true
+
+# LLM Provider Configuration
+llm:
+  provider: "openai"
+  model: "gpt-4"
+  base_url: null  # Use default OpenAI endpoint
+  api_key: null   # Set via RLM_LLM_API_KEY environment variable
+  deployment_name: null
+  api_version: null
+  temperature: 0.7
+  max_tokens: 2000  # Lower token limit for development
+  top_p: 1.0
+  timeout_seconds: 30  # Shorter timeout
+
+# REPL Backend Configuration
+repl:
+  backend: "rhai"
+  execution_timeout: 15  # Shorter timeout for development
+  max_memory_mb: 128     # Lower memory limit
+  reset_between_requests: false
+
+# Logging Configuration (Development)
+logging:
+  level: "debug"  # Verbose logging for development
+  format: "pretty"  # Human-readable format
+  enable_tracing: true
+  file_path: null  # Console logging only
+
+# Metrics and Monitoring (Development)
+metrics:
+  enabled: true
+  path: "/metrics"
+  detailed_metrics: true  # Include detailed metrics for debugging
+
+# CORS Configuration (Permissive for development)
+cors:
+  allowed_origins: ["*"]  # Allow all origins
+  allowed_methods: ["GET", "POST", "OPTIONS", "PUT", "DELETE"]
+  allowed_headers: ["*"]  # Allow all headers
+  allow_credentials: true
+  max_age_seconds: 3600
+
+# Rate Limiting (Disabled for development)
+rate_limiting:
+  enabled: false
+  requests_per_minute: 1000
+  burst_capacity: 100
+
+# Security (Relaxed for development)
+security:
+  require_api_key: false  # No API key required
+  api_keys: []
+  require_signature: false
+
+# Development-specific settings
+development:
+  # Enable hot reloading (if supported)
+  hot_reload: true
+
+  # Mock external services
+  mock_llm_responses: false
+
+  # Debug endpoints
+  enable_debug_endpoints: true
+
+  # Disable caching for development
+  disable_caching: true
+
+  # Enable request/response logging
+  log_requests: true
+  log_responses: true

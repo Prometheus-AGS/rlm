@@ -1,0 +1,47 @@
+# Global ownership
+* @rlm-maintainers
+
+# Core RLM engine
+/crates/rlm-core/ @rlm-core-team @rlm-maintainers
+
+# REPL backends
+/crates/rlm-repl-rhai/ @rlm-repl-team @rlm-maintainers
+/crates/rlm-repl-js/ @rlm-repl-team @rlm-maintainers
+
+# HTTP server
+/crates/rlm-server/ @rlm-server-team @rlm-maintainers
+
+# FFI and WASM
+/crates/rlm-ffi/ @rlm-ffi-team @rlm-maintainers
+
+# UAR integration
+/crates/rlm-uar-adapter/ @rlm-uar-team @rlm-maintainers
+
+# Documentation
+/docs/ @rlm-docs-team @rlm-maintainers
+*.md @rlm-docs-team @rlm-maintainers
+
+# CI/CD and automation
+/.github/ @rlm-devops-team @rlm-maintainers
+/scripts/ @rlm-devops-team @rlm-maintainers
+
+# Docker and deployment
+/Dockerfile* @rlm-devops-team @rlm-maintainers
+/docker-compose*.yml @rlm-devops-team @rlm-maintainers
+
+# Configuration
+/config*.yaml @rlm-maintainers
+/.env* @rlm-maintainers
+
+# Tests and benchmarks
+/tests/ @rlm-qa-team @rlm-maintainers
+/benches/ @rlm-qa-team @rlm-maintainers
+
+# Security-sensitive files
+/SECURITY.md @rlm-security-team @rlm-maintainers
+/.github/workflows/security.yml @rlm-security-team @rlm-maintainers
+
+# Release management
+/CHANGELOG.md @rlm-release-team @rlm-maintainers
+/Cargo.toml @rlm-release-team @rlm-maintainers
+/crates/*/Cargo.toml @rlm-release-team @rlm-maintainers

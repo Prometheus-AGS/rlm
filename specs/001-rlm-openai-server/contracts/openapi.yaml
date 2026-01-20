@@ -1,0 +1,690 @@
+openapi: 3.0.3
+info:
+  title: RLM OpenAI-Compatible Server API
+  description: |
+    RLM (Recursive Language Model) server providing OpenAI-compatible chat completions API
+    with support for arbitrarily long contexts through recursive decomposition.
+
+    This API maintains full compatibility with OpenAI's chat completions interface while
+    adding RLM-specific capabilities for handling contexts exceeding traditional model limits.
+  version: 1.0.0
+  contact:
+    name: RLM Server Support
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Development server
+  - url: https://rlm-api.example.com
+    description: Production server
+
+security:
+  - BearerAuth: []
+  - ApiKeyAuth: []
+
+paths:
+  /v1/chat/completions:
+    post:
+      summary: Create chat completion
+      description: |
+        Creates a chat completion using RLM for long-context processing.
+
+        **RLM Features**:
+        - Handles contexts up to 10M+ tokens through recursive decomposition
+        - Maintains OpenAI API compatibility for drop-in replacement
+        - Supports both streaming and non-streaming responses
+        - Provides real-time processing events for long-running operations
+
+        **Context Processing**:
+        - Contexts under model limit: Direct processing
+        - Contexts over model limit: Automatic RLM recursive processing
+        - Progress events available via Server-Sent Events when streaming
+      operationId: createChatCompletion
+      tags:
+        - Chat Completions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateChatCompletionRequest'
+            examples:
+              basic_request:
+                summary: Basic chat completion
+                value:
+                  model: "gpt-4"
+                  messages:
+                    - role: "user"
+                      content: "Hello, world!"
+                  max_tokens: 100
+              long_context_request:
+                summary: Long context requiring RLM processing
+                value:
+                  model: "gpt-4"
+                  messages:
+                    - role: "user"
+                      content: "Please analyze this 5MB document and answer the question at the end: [large document content]"
+                  stream: true
+                  max_tokens: 500
+              streaming_request:
+                summary: Streaming response with progress events
+                value:
+                  model: "gpt-4"
+                  messages:
+                    - role: "user"
+                      content: "Summarize this research paper"
+                  stream: true
+      responses:
+        '200':
+          description: Successful completion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateChatCompletionResponse'
+              examples:
+                non_streaming_response:
+                  summary: Complete response
+                  value:
+                    id: "chatcmpl-123"
+                    object: "chat.completion"
+                    created: 1677652288
+                    model: "gpt-4"
+                    choices:
+                      - index: 0
+                        message:
+                          role: "assistant"
+                          content: "Hello! How can I assist you today?"
+                        finish_reason: "stop"
+                    usage:
+                      prompt_tokens: 9
+                      completion_tokens: 12
+                      total_tokens: 21
+            text/event-stream:
+              schema:
+                type: string
+                format: binary
+              examples:
+                streaming_response:
+                  summary: Server-Sent Events stream
+                  value: |
+                    data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1677652288,"model":"gpt-4","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}
+
+                    data: {"id":"rlm-event-456","object":"rlm.processing.chunk","created":1677652289,"data":{"type":"recursive_call","depth":1,"progress":"25%","message":"Processing context chunk 1 of 4"}}
+
+                    data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1677652290,"model":"gpt-4","choices":[{"index":0,"delta":{"content":"!"},"finish_reason":"stop"}]}
+
+                    data: [DONE]
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimit'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/models:
+    get:
+      summary: List available models
+      description: |
+        Lists models available through the configured backend providers.
+        Model availability depends on the configured LLM backends (OpenAI, Azure, etc.).
+      operationId: listModels
+      tags:
+        - Models
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListModelsResponse'
+              example:
+                object: "list"
+                data:
+                  - id: "gpt-4"
+                    object: "model"
+                    created: 1677610602
+                    owned_by: "openai"
+                  - id: "gpt-5.2"
+                    object: "model"
+                    created: 1677610602
+                    owned_by: "openai"
+
+  /v1/models/{model}:
+    get:
+      summary: Retrieve model information
+      description: |
+        Retrieves information about a specific model, including RLM-specific capabilities
+        such as maximum recursive depth and context processing limits.
+      operationId: retrieveModel
+      tags:
+        - Models
+      parameters:
+        - name: model
+          in: path
+          required: true
+          description: Model identifier
+          schema:
+            type: string
+          example: "gpt-4"
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Model'
+              example:
+                id: "gpt-4"
+                object: "model"
+                created: 1677610602
+                owned_by: "openai"
+                rlm_capabilities:
+                  max_context_tokens: 10000000
+                  max_recursive_depth: 10
+                  supports_streaming: true
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /health:
+    get:
+      summary: Health check endpoint
+      description: |
+        Returns server health status including backend connectivity and resource utilization.
+        Used by load balancers and monitoring systems.
+      operationId: healthCheck
+      tags:
+        - System
+      security: []  # No auth required for health checks
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "healthy"
+                timestamp: "2024-01-19T12:00:00Z"
+                version: "1.0.0"
+                backends:
+                  openai:
+                    status: "healthy"
+                    response_time_ms: 150
+                  azure:
+                    status: "healthy"
+                    response_time_ms: 200
+                resources:
+                  memory_usage_mb: 256
+                  cpu_usage_percent: 15
+                  active_sessions: 5
+        '503':
+          description: Server is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "unhealthy"
+                timestamp: "2024-01-19T12:00:00Z"
+                version: "1.0.0"
+                error: "Backend connectivity issues"
+
+  /metrics:
+    get:
+      summary: Prometheus metrics endpoint
+      description: |
+        Returns Prometheus-formatted metrics for monitoring and alerting.
+        Includes RLM-specific metrics like recursive call depth and context processing times.
+      operationId: getMetrics
+      tags:
+        - System
+      security: []  # Typically accessed by monitoring systems
+      responses:
+        '200':
+          description: Prometheus metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: |
+                # HELP rlm_requests_total Total number of RLM requests processed
+                # TYPE rlm_requests_total counter
+                rlm_requests_total{model="gpt-4",status="success"} 1234
+
+                # HELP rlm_context_tokens_histogram Distribution of context sizes processed
+                # TYPE rlm_context_tokens_histogram histogram
+                rlm_context_tokens_histogram_bucket{le="1000"} 100
+                rlm_context_tokens_histogram_bucket{le="10000"} 500
+                rlm_context_tokens_histogram_bucket{le="100000"} 800
+
+                # HELP rlm_recursive_depth_histogram Distribution of recursive call depths
+                # TYPE rlm_recursive_depth_histogram histogram
+                rlm_recursive_depth_histogram_bucket{le="1"} 200
+                rlm_recursive_depth_histogram_bucket{le="3"} 800
+                rlm_recursive_depth_histogram_bucket{le="10"} 1000
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Bearer token authentication. Use the same API key format as OpenAI.
+        Example: `Authorization: Bearer sk-...`
+
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: |
+        API key authentication with Bearer prefix.
+        Example: `Authorization: Bearer sk-...`
+
+  schemas:
+    CreateChatCompletionRequest:
+      type: object
+      required:
+        - model
+        - messages
+      properties:
+        model:
+          type: string
+          description: |
+            Model to use for completion. Must be available through configured backend.
+            RLM processing is automatically enabled for contexts exceeding model limits.
+          example: "gpt-4"
+        messages:
+          type: array
+          description: List of messages comprising the conversation
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+          minItems: 1
+        stream:
+          type: boolean
+          description: |
+            Whether to stream back partial progress. When enabled, provides both
+            OpenAI-compatible chunks and RLM-specific processing events.
+          default: false
+        max_tokens:
+          type: integer
+          description: Maximum number of tokens to generate
+          minimum: 1
+          example: 100
+        temperature:
+          type: number
+          description: Sampling temperature between 0 and 2
+          minimum: 0
+          maximum: 2
+          example: 0.7
+        top_p:
+          type: number
+          description: Nucleus sampling parameter
+          minimum: 0
+          maximum: 1
+          example: 1.0
+        stop:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+          description: Stop sequences where generation should end
+        presence_penalty:
+          type: number
+          minimum: -2
+          maximum: 2
+          default: 0
+        frequency_penalty:
+          type: number
+          minimum: -2
+          maximum: 2
+          default: 0
+        logit_bias:
+          type: object
+          additionalProperties:
+            type: number
+          description: Modify likelihood of specified tokens appearing
+        user:
+          type: string
+          description: Unique identifier for the end-user
+        # RLM-specific extensions
+        rlm_config:
+          $ref: '#/components/schemas/RlmConfig'
+
+    ChatMessage:
+      type: object
+      required:
+        - role
+        - content
+      properties:
+        role:
+          type: string
+          enum: ["system", "user", "assistant", "function"]
+          description: Role of the message author
+        content:
+          type: string
+          description: |
+            Message content. For RLM processing, can contain arbitrarily long text
+            that will be automatically processed through recursive decomposition.
+        name:
+          type: string
+          description: Name of the author (for function calls)
+
+    RlmConfig:
+      type: object
+      description: |
+        Optional RLM-specific configuration to control recursive processing behavior.
+        These parameters fine-tune the RLM processing strategy.
+      properties:
+        max_recursive_depth:
+          type: integer
+          description: Maximum depth of recursive calls
+          minimum: 1
+          maximum: 20
+          default: 10
+        context_chunk_size:
+          type: integer
+          description: Size of context chunks for processing
+          minimum: 1000
+          maximum: 100000
+          default: 50000
+        enable_progress_events:
+          type: boolean
+          description: Whether to emit RLM processing progress events
+          default: true
+        aggregation_strategy:
+          type: string
+          enum: ["parallel", "sequential", "adaptive"]
+          description: Strategy for aggregating recursive results
+          default: "adaptive"
+
+    CreateChatCompletionResponse:
+      type: object
+      required:
+        - id
+        - object
+        - created
+        - model
+        - choices
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the completion
+          example: "chatcmpl-123"
+        object:
+          type: string
+          enum: ["chat.completion"]
+          description: Object type
+        created:
+          type: integer
+          description: Unix timestamp of completion creation
+          example: 1677652288
+        model:
+          type: string
+          description: Model used for completion
+          example: "gpt-4"
+        choices:
+          type: array
+          description: List of completion choices
+          items:
+            $ref: '#/components/schemas/ChatCompletionChoice'
+        usage:
+          $ref: '#/components/schemas/Usage'
+        # RLM-specific response data
+        rlm_metadata:
+          $ref: '#/components/schemas/RlmMetadata'
+
+    ChatCompletionChoice:
+      type: object
+      required:
+        - index
+        - message
+        - finish_reason
+      properties:
+        index:
+          type: integer
+          description: Choice index
+        message:
+          $ref: '#/components/schemas/ChatMessage'
+        finish_reason:
+          type: string
+          enum: ["stop", "length", "function_call", "content_filter", "rlm_limit"]
+          description: |
+            Reason why completion finished. "rlm_limit" indicates recursive depth limit reached.
+
+    Usage:
+      type: object
+      required:
+        - prompt_tokens
+        - completion_tokens
+        - total_tokens
+      properties:
+        prompt_tokens:
+          type: integer
+          description: Number of tokens in the prompt
+        completion_tokens:
+          type: integer
+          description: Number of tokens in the completion
+        total_tokens:
+          type: integer
+          description: Total tokens used (prompt + completion + recursive calls)
+        # RLM-specific usage data
+        recursive_calls:
+          type: integer
+          description: Number of recursive LLM calls made
+        context_processing_tokens:
+          type: integer
+          description: Tokens used for context processing and REPL operations
+
+    RlmMetadata:
+      type: object
+      description: RLM-specific processing metadata
+      properties:
+        processing_time_ms:
+          type: integer
+          description: Total processing time including recursive calls
+        recursive_depth:
+          type: integer
+          description: Maximum depth of recursive calls used
+        context_chunks:
+          type: integer
+          description: Number of context chunks processed
+        repl_operations:
+          type: integer
+          description: Number of REPL operations executed
+
+    Model:
+      type: object
+      required:
+        - id
+        - object
+        - created
+        - owned_by
+      properties:
+        id:
+          type: string
+          description: Model identifier
+        object:
+          type: string
+          enum: ["model"]
+          description: Object type
+        created:
+          type: integer
+          description: Unix timestamp of model creation
+        owned_by:
+          type: string
+          description: Organization that owns the model
+        # RLM-specific model capabilities
+        rlm_capabilities:
+          type: object
+          properties:
+            max_context_tokens:
+              type: integer
+              description: Maximum context tokens RLM can process
+            max_recursive_depth:
+              type: integer
+              description: Maximum recursive depth supported
+            supports_streaming:
+              type: boolean
+              description: Whether model supports streaming responses
+
+    ListModelsResponse:
+      type: object
+      required:
+        - object
+        - data
+      properties:
+        object:
+          type: string
+          enum: ["list"]
+          description: Object type
+        data:
+          type: array
+          description: List of available models
+          items:
+            $ref: '#/components/schemas/Model'
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - version
+      properties:
+        status:
+          type: string
+          enum: ["healthy", "unhealthy"]
+          description: Overall system health status
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of health check
+        version:
+          type: string
+          description: Server version
+        backends:
+          type: object
+          description: Backend service health status
+          additionalProperties:
+            type: object
+            properties:
+              status:
+                type: string
+                enum: ["healthy", "unhealthy"]
+              response_time_ms:
+                type: integer
+              error:
+                type: string
+        resources:
+          type: object
+          description: System resource utilization
+          properties:
+            memory_usage_mb:
+              type: integer
+            cpu_usage_percent:
+              type: number
+            active_sessions:
+              type: integer
+        error:
+          type: string
+          description: Error message if unhealthy
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - message
+            - type
+          properties:
+            message:
+              type: string
+              description: Human-readable error description
+            type:
+              type: string
+              description: Error type for programmatic handling
+            code:
+              type: string
+              description: Error code for specific error identification
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              message: "Invalid model specified"
+              type: "invalid_request_error"
+              code: "model_not_found"
+
+    Unauthorized:
+      description: Invalid or missing authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              message: "Invalid API key provided"
+              type: "authentication_error"
+              code: "invalid_api_key"
+
+    NotFound:
+      description: Requested resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              message: "Model not found"
+              type: "not_found_error"
+              code: "model_not_found"
+
+    RateLimit:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              message: "Rate limit exceeded. Please try again later."
+              type: "rate_limit_error"
+              code: "rate_limit_exceeded"
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              message: "Internal server error occurred"
+              type: "internal_error"
+              code: "server_error"
+
+tags:
+  - name: Chat Completions
+    description: |
+      OpenAI-compatible chat completions with RLM long-context processing capabilities.
+      Automatically handles contexts exceeding model limits through recursive decomposition.
+
+  - name: Models
+    description: |
+      Model information and availability through configured backend providers.
+      Includes RLM-specific capabilities and processing limits.
+
+  - name: System
+    description: |
+      System health monitoring, metrics, and operational endpoints for production deployment.

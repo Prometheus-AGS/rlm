@@ -1,0 +1,133 @@
+# Development Docker Compose Configuration for RLM Server
+#
+# This configuration is optimized for local development with:
+# - Source code mounting for hot-reload development
+# - Debug logging and tools
+# - Development-friendly settings
+
+version: '3.8'
+
+services:
+  # RLM server in development mode
+  rlm-server-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: rlm-server-dev
+    ports:
+      - "8080:8080"
+      - "9229:9229"  # Debug port
+    environment:
+      # Server configuration
+      - RLM_SERVER_HOST=0.0.0.0
+      - RLM_SERVER_PORT=8080
+
+      # LLM provider configuration
+      - RLM_LLM_PROVIDER=openai
+      - RLM_LLM_MODEL=gpt-4
+      - RLM_LLM_API_KEY=${OPENAI_API_KEY:-mock-key-for-testing}
+
+      # Development-friendly limits
+      - RLM_MAX_CONTEXT_SIZE=1000000
+      - RLM_MAX_RECURSIVE_DEPTH=5
+      - RLM_MAX_ITERATIONS=25
+
+      # Debug logging
+      - RLM_LOG_LEVEL=debug
+      - RLM_LOG_FORMAT=pretty
+      - RUST_LOG=debug
+      - RUST_BACKTRACE=1
+
+      # Development settings
+      - RLM_REQUIRE_API_KEY=false
+      - RLM_ENABLE_CORS=true
+      - RLM_CORS_ORIGINS=*
+    volumes:
+      # Mount source code for development
+      - .:/app:cached
+      - target:/app/target  # Cache Cargo build output
+      # Development logs
+      - ./dev-logs:/app/logs
+      # Development config
+      - ./config.dev.yaml:/app/config.yaml:ro
+    working_dir: /app
+    command: ["cargo", "watch", "-x", "run --bin rlm-server"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s  # Allow time for compilation
+    networks:
+      - rlm-dev-network
+
+  # Redis for development testing
+  redis-dev:
+    image: redis:7-alpine
+    container_name: rlm-redis-dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-dev-data:/data
+    networks:
+      - rlm-dev-network
+
+  # Mailhog for email testing
+  mailhog:
+    image: mailhog/mailhog
+    container_name: rlm-mailhog
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+    networks:
+      - rlm-dev-network
+
+  # Jaeger for distributed tracing
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: rlm-jaeger
+    ports:
+      - "14268:14268"
+      - "16686:16686"  # Web UI
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    networks:
+      - rlm-dev-network
+
+  # PostgreSQL for testing database features
+  postgres-dev:
+    image: postgres:15-alpine
+    container_name: rlm-postgres-dev
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=rlm_dev
+      - POSTGRES_USER=rlm_dev
+      - POSTGRES_PASSWORD=dev123
+    volumes:
+      - postgres-dev-data:/var/lib/postgresql/data
+      - ./scripts/sql:/docker-entrypoint-initdb.d:ro
+    networks:
+      - rlm-dev-network
+
+  # Wiremock for mocking external APIs
+  wiremock:
+    image: wiremock/wiremock:latest
+    container_name: rlm-wiremock
+    ports:
+      - "9999:8080"
+    volumes:
+      - ./tests/wiremock/mappings:/home/wiremock/mappings:ro
+      - ./tests/wiremock/__files:/home/wiremock/__files:ro
+    command: ["--global-response-templating", "--verbose"]
+    networks:
+      - rlm-dev-network
+
+networks:
+  rlm-dev-network:
+    driver: bridge
+
+volumes:
+  target:  # Cargo build cache
+  redis-dev-data:
+  postgres-dev-data:

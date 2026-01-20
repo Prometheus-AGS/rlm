@@ -1,0 +1,298 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v1.0.0)'
+        required: true
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      version: ${{ steps.get_version.outputs.version }}
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Get version
+      id: get_version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          VERSION="${{ github.event.inputs.version }}"
+        else
+          VERSION=${GITHUB_REF#refs/tags/}
+        fi
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        echo "Version: ${VERSION}"
+    
+    - name: Generate changelog
+      run: |
+        # Generate changelog from git commits since last tag
+        LAST_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+        if [ -z "$LAST_TAG" ]; then
+          echo "## Changes" > CHANGELOG.md
+          git log --pretty=format:"- %s (%h)" >> CHANGELOG.md
+        else
+          echo "## Changes since ${LAST_TAG}" > CHANGELOG.md
+          git log ${LAST_TAG}..HEAD --pretty=format:"- %s (%h)" >> CHANGELOG.md
+        fi
+    
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.get_version.outputs.version }}
+        release_name: RLM ${{ steps.get_version.outputs.version }}
+        body_path: CHANGELOG.md
+        draft: false
+        prerelease: ${{ contains(steps.get_version.outputs.version, '-') }}
+
+  build-binaries:
+    name: Build Binaries
+    needs: create-release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            suffix: ""
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            suffix: ""
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            suffix: ""
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            suffix: ""
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            suffix: ".exe"
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.target }}
+    
+    - name: Install cross-compilation tools
+      if: matrix.target == 'aarch64-unknown-linux-gnu'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-aarch64-linux-gnu
+    
+    - name: Cache dependencies
+      uses: Swatinem/rust-cache@v2
+      with:
+        key: ${{ runner.os }}-${{ matrix.target }}-release
+    
+    - name: Build binary
+      run: |
+        if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
+          export CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc
+          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+        fi
+        cargo build --release --target ${{ matrix.target }} --bin rlm-server
+    
+    - name: Create archive
+      run: |
+        cd target/${{ matrix.target }}/release
+        if [ "${{ runner.os }}" = "Windows" ]; then
+          7z a ../../../rlm-server-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.zip rlm-server${{ matrix.suffix }}
+        else
+          tar -czf ../../../rlm-server-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz rlm-server${{ matrix.suffix }}
+        fi
+    
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./rlm-server-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.${{ runner.os == 'Windows' && 'zip' || 'tar.gz' }}
+        asset_name: rlm-server-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.${{ runner.os == 'Windows' && 'zip' || 'tar.gz' }}
+        asset_content_type: application/octet-stream
+
+  build-docker:
+    name: Build and Push Docker Images
+    needs: create-release
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Log in to Docker Hub
+      if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main'
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+    
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: |
+          rlm-server
+          ghcr.io/${{ github.repository }}
+        tags: |
+          type=ref,event=tag
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+    
+    - name: Build and push Docker images
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          VERSION=${{ needs.create-release.outputs.version }}
+          VCS_REF=${{ github.sha }}
+          BUILD_DATE=${{ github.event.head_commit.timestamp }}
+
+  build-wasm:
+    name: Build WASM Package
+    needs: create-release
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: wasm32-unknown-unknown
+    
+    - name: Install wasm-pack
+      run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+    
+    - name: Cache dependencies
+      uses: Swatinem/rust-cache@v2
+    
+    - name: Build WASM package
+      run: |
+        cd crates/rlm-ffi
+        wasm-pack build --target web --out-dir pkg --release
+        
+        # Create archive
+        cd pkg
+        tar -czf ../../rlm-wasm-${{ needs.create-release.outputs.version }}.tar.gz *
+    
+    - name: Upload WASM Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./rlm-wasm-${{ needs.create-release.outputs.version }}.tar.gz
+        asset_name: rlm-wasm-${{ needs.create-release.outputs.version }}.tar.gz
+        asset_content_type: application/gzip
+
+  publish-crates:
+    name: Publish to Crates.io
+    needs: [create-release, build-binaries]
+    runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+    
+    - name: Cache dependencies
+      uses: Swatinem/rust-cache@v2
+    
+    - name: Publish rlm-core
+      run: cd crates/rlm-core && cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    
+    - name: Wait for rlm-core to be available
+      run: sleep 30
+    
+    - name: Publish rlm-repl-rhai
+      run: cd crates/rlm-repl-rhai && cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    
+    - name: Wait for rlm-repl-rhai to be available
+      run: sleep 30
+    
+    - name: Publish rlm-server
+      run: cd crates/rlm-server && cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    
+    - name: Wait for rlm-server to be available
+      run: sleep 30
+    
+    - name: Publish rlm-ffi
+      run: cd crates/rlm-ffi && cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  validate-release:
+    name: Validate Release
+    needs: [create-release, build-docker]
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Test Docker image from registry
+      run: |
+        # Pull and test the released Docker image
+        docker pull ghcr.io/${{ github.repository }}:${{ needs.create-release.outputs.version }}
+        
+        # Run container
+        docker run -d --name rlm-release-test -p 8080:8080 -e RLM_LLM_API_KEY=test-key \
+          ghcr.io/${{ github.repository }}:${{ needs.create-release.outputs.version }}
+        
+        # Wait for startup
+        sleep 15
+        
+        # Test endpoints
+        curl -f http://localhost:8080/health || exit 1
+        curl -f http://localhost:8080/metrics || exit 1
+        
+        # Clean up
+        docker stop rlm-release-test
+        docker rm rlm-release-test
+    
+    - name: Update release notes
+      run: |
+        echo "✅ Release validation completed successfully" >> release_notes.md
+        echo "" >> release_notes.md
+        echo "## Available Assets:" >> release_notes.md
+        echo "- Binary releases for Linux (x86_64, aarch64), macOS (x86_64, aarch64), Windows (x86_64)" >> release_notes.md
+        echo "- Docker images: \`ghcr.io/${{ github.repository }}:${{ needs.create-release.outputs.version }}\`" >> release_notes.md
+        echo "- WASM package for browser integration" >> release_notes.md
+        echo "- Published Rust crates on crates.io" >> release_notes.md

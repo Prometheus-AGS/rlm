@@ -1,0 +1,313 @@
+name: Security
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run security scans daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+    
+    - name: Cache dependencies
+      uses: Swatinem/rust-cache@v2
+    
+    - name: Install cargo-audit
+      run: cargo install cargo-audit --locked
+    
+    - name: Run cargo audit
+      run: cargo audit --json > audit-results.json || true
+    
+    - name: Process audit results
+      run: |
+        echo "## Security Audit Results" >> $GITHUB_STEP_SUMMARY
+        
+        if [ -s audit-results.json ]; then
+          # Check if there are any vulnerabilities
+          VULN_COUNT=$(jq '.vulnerabilities.list | length' audit-results.json)
+          WARNINGS_COUNT=$(jq '.warnings | length' audit-results.json)
+          
+          echo "🔍 Vulnerabilities found: $VULN_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ Warnings: $WARNINGS_COUNT" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "$VULN_COUNT" -gt 0 ]; then
+            echo "### Vulnerabilities:" >> $GITHUB_STEP_SUMMARY
+            jq -r '.vulnerabilities.list[] | "- **\(.advisory.id)**: \(.advisory.title) (Package: \(.advisory.package))"' audit-results.json >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+          
+          if [ "$WARNINGS_COUNT" -gt 0 ]; then
+            echo "### Warnings:" >> $GITHUB_STEP_SUMMARY
+            jq -r '.warnings[] | "- \(.kind): \(.message)"' audit-results.json >> $GITHUB_STEP_SUMMARY
+          fi
+        else
+          echo "✅ No security issues found" >> $GITHUB_STEP_SUMMARY
+        fi
+    
+    - name: Upload audit results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-audit-results
+        path: audit-results.json
+
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Dependency Review
+      uses: actions/dependency-review-action@v3
+      with:
+        # Fail on high severity vulnerabilities
+        fail-on-severity: high
+        # Allow GPL licensed dependencies (add other licenses as needed)
+        allow-licenses: GPL-2.0, GPL-3.0, LGPL-2.1, LGPL-3.0, MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause
+        # Deny specific licenses if needed
+        # deny-licenses: AGPL-3.0, GPL-3.0-or-later
+
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'rust', 'javascript' ]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v2
+      with:
+        languages: ${{ matrix.language }}
+        config-file: ./.github/codeql/codeql-config.yml
+    
+    - name: Install Rust toolchain
+      if: matrix.language == 'rust'
+      uses: dtolnay/rust-toolchain@stable
+    
+    - name: Build for CodeQL analysis
+      if: matrix.language == 'rust'
+      run: |
+        cargo build --workspace --all-features
+    
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v2
+      with:
+        category: "/language:${{matrix.language}}"
+
+  docker-security:
+    name: Docker Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Build Docker image for scanning
+      run: |
+        docker buildx build --load --tag rlm-server:security-scan .
+    
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'rlm-server:security-scan'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+    
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+    
+    - name: Run Docker Scout
+      if: github.event_name != 'schedule'
+      uses: docker/scout-action@v1
+      with:
+        command: cves
+        image: rlm-server:security-scan
+        sarif-file: scout-results.sarif
+        summary: true
+    
+    - name: Upload Docker Scout results
+      if: github.event_name != 'schedule'
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: 'scout-results.sarif'
+
+  secrets-scan:
+    name: Secrets Detection
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Run TruffleHog OSS
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: main
+        head: HEAD
+        extra_args: --debug --only-verified
+    
+    - name: Run GitLeaks
+      uses: gitleaks/gitleaks-action@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+    
+    - name: Upload GitLeaks results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: gitleaks-report
+        path: results.sarif
+
+  sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+    
+    - name: Cache dependencies
+      uses: Swatinem/rust-cache@v2
+    
+    - name: Install cargo-cyclonedx
+      run: cargo install cargo-cyclonedx
+    
+    - name: Generate SBOM
+      run: |
+        cargo cyclonedx --format json --output-pattern "{name}-{version}-sbom.json"
+    
+    - name: Upload SBOM
+      uses: actions/upload-artifact@v3
+      with:
+        name: software-bill-of-materials
+        path: "*-sbom.json"
+    
+    - name: Generate SBOM for Docker image
+      run: |
+        # Build image
+        docker build -t rlm-server:sbom .
+        
+        # Generate SBOM using Syft
+        curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+        syft rlm-server:sbom -o spdx-json > docker-sbom.json
+    
+    - name: Upload Docker SBOM
+      uses: actions/upload-artifact@v3
+      with:
+        name: docker-sbom
+        path: docker-sbom.json
+
+  license-check:
+    name: License Compliance Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+    
+    - name: Cache dependencies
+      uses: Swatinem/rust-cache@v2
+    
+    - name: Install cargo-license
+      run: cargo install cargo-license
+    
+    - name: Check licenses
+      run: |
+        echo "## License Report" >> $GITHUB_STEP_SUMMARY
+        echo "### Direct Dependencies:" >> $GITHUB_STEP_SUMMARY
+        cargo license --json > licenses.json
+        
+        # Check for allowed licenses
+        ALLOWED_LICENSES="MIT,Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,Unicode-DFS-2016"
+        
+        # Extract unique licenses
+        jq -r '.[].license' licenses.json | sort | uniq > unique_licenses.txt
+        
+        echo "Found licenses:" >> $GITHUB_STEP_SUMMARY
+        cat unique_licenses.txt | while read license; do
+          if echo "$ALLOWED_LICENSES" | grep -q "$license"; then
+            echo "✅ $license" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ $license (not in approved list)" >> $GITHUB_STEP_SUMMARY
+          fi
+        done
+        
+        # Check for problematic licenses
+        PROBLEMATIC=$(jq -r '.[].license' licenses.json | grep -v -E "(MIT|Apache-2.0|BSD-2-Clause|BSD-3-Clause|ISC|Unicode-DFS-2016)" | sort | uniq || true)
+        
+        if [ -n "$PROBLEMATIC" ]; then
+          echo "### ⚠️ Dependencies with non-standard licenses:" >> $GITHUB_STEP_SUMMARY
+          echo "$PROBLEMATIC" | while read license; do
+            jq -r ".[] | select(.license == \"$license\") | \"- \(.name) v\(.version) (\(.license))\"" licenses.json >> $GITHUB_STEP_SUMMARY
+          done
+        fi
+    
+    - name: Upload license report
+      uses: actions/upload-artifact@v3
+      with:
+        name: license-report
+        path: licenses.json
+
+  security-scorecard:
+    name: OpenSSF Scorecard
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      id-token: write
+      actions: read
+      contents: read
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+    
+    - name: Run analysis
+      uses: ossf/scorecard-action@v2.3.1
+      with:
+        results_file: results.sarif
+        results_format: sarif
+        publish_results: true
+    
+    - name: Upload SARIF results to dependency graph
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: results.sarif

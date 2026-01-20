@@ -1,0 +1,371 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      version:
+        description: 'Version to deploy (latest for HEAD)'
+        required: false
+        default: 'latest'
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set deployment variables
+      id: vars
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          ENV="${{ github.event.inputs.environment }}"
+          VERSION="${{ github.event.inputs.version }}"
+        else
+          ENV="staging"
+          VERSION="latest"
+        fi
+        
+        echo "environment=${ENV}" >> $GITHUB_OUTPUT
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        echo "deploy_tag=${ENV}-$(date +%Y%m%d-%H%M%S)" >> $GITHUB_OUTPUT
+        
+        # Set environment-specific configurations
+        case "${ENV}" in
+          "production")
+            echo "replicas=3" >> $GITHUB_OUTPUT
+            echo "cpu_limit=2" >> $GITHUB_OUTPUT
+            echo "memory_limit=4Gi" >> $GITHUB_OUTPUT
+            ;;
+          "staging")
+            echo "replicas=1" >> $GITHUB_OUTPUT
+            echo "cpu_limit=1" >> $GITHUB_OUTPUT
+            echo "memory_limit=2Gi" >> $GITHUB_OUTPUT
+            ;;
+        esac
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Build and push deployment image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: |
+          ghcr.io/${{ github.repository }}:${{ steps.vars.outputs.deploy_tag }}
+          ghcr.io/${{ github.repository }}:${{ steps.vars.outputs.environment }}-latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          VERSION=${{ steps.vars.outputs.version }}
+          VCS_REF=${{ github.sha }}
+          BUILD_DATE=${{ github.event.head_commit.timestamp }}
+
+  deploy-docker-compose:
+    name: Deploy with Docker Compose
+    needs: build-and-deploy
+    runs-on: ubuntu-latest
+    if: github.event.inputs.environment == 'staging' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up environment variables
+      run: |
+        cat > .env.deploy << EOF
+        RLM_LLM_API_KEY=${{ secrets.OPENAI_API_KEY }}
+        RLM_LLM_PROVIDER=openai
+        RLM_LLM_MODEL=gpt-4
+        RLM_SERVER_HOST=0.0.0.0
+        RLM_SERVER_PORT=8080
+        RLM_LOG_LEVEL=info
+        RLM_LOG_FORMAT=json
+        ENVIRONMENT=${{ needs.build-and-deploy.outputs.environment }}
+        IMAGE_TAG=${{ needs.build-and-deploy.outputs.deploy_tag }}
+        EOF
+    
+    - name: Deploy to staging environment
+      run: |
+        # This would typically involve deploying to a staging server
+        # For demonstration, we'll validate the deployment configuration
+        
+        echo "🚀 Deploying RLM server to ${{ needs.build-and-deploy.outputs.environment }}"
+        echo "📦 Image: ghcr.io/${{ github.repository }}:${{ needs.build-and-deploy.outputs.deploy_tag }}"
+        
+        # Validate Docker Compose configuration
+        docker-compose -f docker-compose.yml config
+        
+        # Test deployment locally
+        docker-compose -f docker-compose.yml --env-file .env.deploy up -d
+        
+        # Wait for service to be ready
+        timeout 60s bash -c 'until curl -f http://localhost:8080/health; do sleep 2; done'
+        
+        echo "✅ Deployment validation successful"
+        
+        # Clean up local test
+        docker-compose -f docker-compose.yml down
+
+  deploy-kubernetes:
+    name: Deploy to Kubernetes
+    needs: build-and-deploy
+    runs-on: ubuntu-latest
+    if: github.event.inputs.environment == 'production'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+    
+    - name: Configure kubectl
+      run: |
+        # This would configure kubectl with your cluster credentials
+        # Example for different cloud providers:
+        
+        # For Google Cloud:
+        # echo "${{ secrets.GKE_KEY }}" | base64 -d > gke-key.json
+        # gcloud auth activate-service-account --key-file gke-key.json
+        # gcloud container clusters get-credentials $CLUSTER_NAME --zone $ZONE --project $PROJECT_ID
+        
+        # For AWS EKS:
+        # aws eks update-kubeconfig --region $AWS_REGION --name $CLUSTER_NAME
+        
+        # For Azure AKS:
+        # az aks get-credentials --resource-group $RESOURCE_GROUP --name $CLUSTER_NAME
+        
+        echo "⚙️ Kubernetes deployment would be configured here"
+    
+    - name: Create Kubernetes manifests
+      run: |
+        mkdir -p k8s
+        
+        cat > k8s/namespace.yaml << EOF
+        apiVersion: v1
+        kind: Namespace
+        metadata:
+          name: rlm-${{ needs.build-and-deploy.outputs.environment }}
+          labels:
+            environment: ${{ needs.build-and-deploy.outputs.environment }}
+        EOF
+        
+        cat > k8s/secret.yaml << EOF
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: rlm-secrets
+          namespace: rlm-${{ needs.build-and-deploy.outputs.environment }}
+        type: Opaque
+        stringData:
+          RLM_LLM_API_KEY: "${{ secrets.OPENAI_API_KEY }}"
+        EOF
+        
+        cat > k8s/deployment.yaml << EOF
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: rlm-server
+          namespace: rlm-${{ needs.build-and-deploy.outputs.environment }}
+          labels:
+            app: rlm-server
+            environment: ${{ needs.build-and-deploy.outputs.environment }}
+        spec:
+          replicas: ${{ needs.build-and-deploy.outputs.replicas }}
+          selector:
+            matchLabels:
+              app: rlm-server
+          template:
+            metadata:
+              labels:
+                app: rlm-server
+                environment: ${{ needs.build-and-deploy.outputs.environment }}
+            spec:
+              containers:
+              - name: rlm-server
+                image: ghcr.io/${{ github.repository }}:${{ needs.build-and-deploy.outputs.deploy_tag }}
+                ports:
+                - containerPort: 8080
+                envFrom:
+                - secretRef:
+                    name: rlm-secrets
+                env:
+                - name: RLM_SERVER_HOST
+                  value: "0.0.0.0"
+                - name: RLM_SERVER_PORT
+                  value: "8080"
+                - name: RLM_LOG_LEVEL
+                  value: "info"
+                - name: RLM_LOG_FORMAT
+                  value: "json"
+                resources:
+                  requests:
+                    cpu: 500m
+                    memory: 1Gi
+                  limits:
+                    cpu: ${{ needs.build-and-deploy.outputs.cpu_limit }}
+                    memory: ${{ needs.build-and-deploy.outputs.memory_limit }}
+                livenessProbe:
+                  httpGet:
+                    path: /health
+                    port: 8080
+                  initialDelaySeconds: 30
+                  periodSeconds: 10
+                readinessProbe:
+                  httpGet:
+                    path: /health
+                    port: 8080
+                  initialDelaySeconds: 5
+                  periodSeconds: 5
+        EOF
+        
+        cat > k8s/service.yaml << EOF
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: rlm-server
+          namespace: rlm-${{ needs.build-and-deploy.outputs.environment }}
+          labels:
+            app: rlm-server
+        spec:
+          selector:
+            app: rlm-server
+          ports:
+          - port: 80
+            targetPort: 8080
+            protocol: TCP
+            name: http
+          type: ClusterIP
+        EOF
+        
+        cat > k8s/ingress.yaml << EOF
+        apiVersion: networking.k8s.io/v1
+        kind: Ingress
+        metadata:
+          name: rlm-server
+          namespace: rlm-${{ needs.build-and-deploy.outputs.environment }}
+          annotations:
+            kubernetes.io/ingress.class: nginx
+            cert-manager.io/cluster-issuer: letsencrypt-prod
+            nginx.ingress.kubernetes.io/ssl-redirect: "true"
+            nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+            nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+            nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+        spec:
+          tls:
+          - hosts:
+            - rlm-${{ needs.build-and-deploy.outputs.environment }}.example.com
+            secretName: rlm-${{ needs.build-and-deploy.outputs.environment }}-tls
+          rules:
+          - host: rlm-${{ needs.build-and-deploy.outputs.environment }}.example.com
+            http:
+              paths:
+              - path: /
+                pathType: Prefix
+                backend:
+                  service:
+                    name: rlm-server
+                    port:
+                      number: 80
+        EOF
+    
+    - name: Deploy to Kubernetes
+      run: |
+        # Apply Kubernetes manifests
+        echo "🚀 Deploying to Kubernetes cluster..."
+        
+        # kubectl apply -f k8s/namespace.yaml
+        # kubectl apply -f k8s/secret.yaml
+        # kubectl apply -f k8s/deployment.yaml
+        # kubectl apply -f k8s/service.yaml
+        # kubectl apply -f k8s/ingress.yaml
+        
+        # Wait for deployment to complete
+        # kubectl rollout status deployment/rlm-server -n rlm-${{ needs.build-and-deploy.outputs.environment }} --timeout=300s
+        
+        echo "✅ Kubernetes deployment configuration ready"
+        echo "📋 Manifests created in k8s/ directory"
+
+  smoke-test:
+    name: Post-Deployment Smoke Tests
+    needs: [build-and-deploy, deploy-docker-compose]
+    runs-on: ubuntu-latest
+    if: always() && needs.build-and-deploy.result == 'success'
+    
+    steps:
+    - name: Run smoke tests
+      run: |
+        # This would run against the deployed environment
+        # For now, we'll simulate the tests
+        
+        echo "🧪 Running post-deployment smoke tests..."
+        
+        # Test health endpoint
+        # curl -f https://rlm-${{ needs.build-and-deploy.outputs.environment }}.example.com/health
+        
+        # Test metrics endpoint
+        # curl -f https://rlm-${{ needs.build-and-deploy.outputs.environment }}.example.com/metrics
+        
+        # Test basic RLM functionality
+        # curl -X POST https://rlm-${{ needs.build-and-deploy.outputs.environment }}.example.com/v1/execute \
+        #   -H "Content-Type: application/json" \
+        #   -d '{"context": "test context", "query": "test query"}' | grep -q "success"
+        
+        echo "✅ Smoke tests would be run against deployed environment"
+
+  notify:
+    name: Notify Deployment Status
+    needs: [build-and-deploy, deploy-docker-compose, deploy-kubernetes, smoke-test]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Notify deployment success
+      if: needs.build-and-deploy.result == 'success'
+      run: |
+        echo "🎉 Deployment to ${{ needs.build-and-deploy.outputs.environment }} successful!"
+        echo "📦 Image: ghcr.io/${{ github.repository }}:${{ needs.build-and-deploy.outputs.deploy_tag }}"
+        echo "🌐 Environment: ${{ needs.build-and-deploy.outputs.environment }}"
+        
+        # This could send notifications to Slack, Discord, email, etc.
+        # Example for Slack:
+        # curl -X POST -H 'Content-type: application/json' \
+        #   --data '{"text":"✅ RLM Server deployed to ${{ needs.build-and-deploy.outputs.environment }}"}' \
+        #   ${{ secrets.SLACK_WEBHOOK_URL }}
+    
+    - name: Notify deployment failure
+      if: needs.build-and-deploy.result == 'failure'
+      run: |
+        echo "❌ Deployment to ${{ needs.build-and-deploy.outputs.environment }} failed!"
+        
+        # This could send failure notifications
+        # curl -X POST -H 'Content-type: application/json' \
+        #   --data '{"text":"❌ RLM Server deployment failed for ${{ needs.build-and-deploy.outputs.environment }}"}' \
+        #   ${{ secrets.SLACK_WEBHOOK_URL }}

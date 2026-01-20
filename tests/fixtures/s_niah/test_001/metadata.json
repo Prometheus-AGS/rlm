@@ -1,0 +1,12 @@
+{
+  "test_id": "s_niah_001",
+  "description": "Basic needle-in-haystack with specific fact",
+  "haystack_length_tokens": 10000,
+  "needle_position": "middle",
+  "needle_type": "specific_fact",
+  "difficulty": "basic",
+  "expected_accuracy_baseline": 0.95,
+  "expected_accuracy_rlm": 0.98,
+  "complexity_class": "O(1)",
+  "test_type": "needle_in_haystack"
+}
