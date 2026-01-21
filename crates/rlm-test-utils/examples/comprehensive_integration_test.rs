@@ -25,38 +25,44 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use tokio;
-use uuid::Uuid;
 use tracing::{info, warn, Level};
 use tracing_subscriber;
+use uuid::Uuid;
 
 use rlm_test_utils::{
+    // Evaluators
+    AccuracyEvaluator,
+    CostEvaluator,
+    JsonReportGenerator,
+    // Vault integration
+    KeyVaultProvider,
+
+    MarkdownReportGenerator,
+    MockLlmProvider,
+
+    // LLM providers
+    OpenAiTestProvider,
+    PerformanceEvaluator,
+    PerformanceMetrics,
+
+    ReportBuilder,
+    TestCaseReport,
+    TestError,
     // Core framework
     TestFramework,
 
-    // Vault integration
-    KeyVaultProvider,
-    
-    // LLM providers
-    OpenAiTestProvider, MockLlmProvider,
-
-    // Evaluators
-    AccuracyEvaluator, PerformanceEvaluator, CostEvaluator,
-    PerformanceMetrics,
-
     // Reporting
-    TestReportGenerator, MarkdownReportGenerator, JsonReportGenerator,
-    ReportBuilder, TestCaseReport, TestStatus,
-
+    TestReportGenerator,
     // Error handling
-    TestResult, TestError,
+    TestResult,
+    TestStatus,
 };
 
-use rlm_test_utils::vault::VaultFactory;
 use rlm_test_utils::coverage::{CoverageAnalyzer, CoverageConfig, CoverageReport};
+use rlm_test_utils::vault::VaultFactory;
 
 use rlm_test_utils::providers::{
-    LlmTestProvider, LlmTestProviderConfig, TestProviderType,
-    CompletionRequest, ChatMessage,
+    ChatMessage, CompletionRequest, LlmTestProvider, LlmTestProviderConfig, TestProviderType,
 };
 
 use chrono::Utc;
@@ -154,11 +160,10 @@ impl ComprehensiveTestExecution {
         let coverage_analyzer = CoverageAnalyzer::new(coverage_config);
 
         // 6. Initialize report builder
-        let report_builder = ReportBuilder::new()
-            .with_git_info(
-                env::var("GITHUB_SHA").ok(),
-                env::var("GITHUB_REF_NAME").ok(),
-            );
+        let report_builder = ReportBuilder::new().with_git_info(
+            env::var("GITHUB_SHA").ok(),
+            env::var("GITHUB_REF_NAME").ok(),
+        );
 
         Ok(Self {
             vault,
@@ -182,7 +187,10 @@ impl ComprehensiveTestExecution {
 
                 // Initialize the secrets table
                 if let Err(e) = vault.init_table().await {
-                    warn!("Failed to initialize Supabase table (may already exist): {}", e);
+                    warn!(
+                        "Failed to initialize Supabase table (may already exist): {}",
+                        e
+                    );
                 }
 
                 // Store test secrets if they don't exist
@@ -195,7 +203,9 @@ impl ComprehensiveTestExecution {
 
             #[cfg(not(feature = "supabase-vault"))]
             {
-                warn!("Supabase vault requested but feature not enabled, falling back to local vault");
+                warn!(
+                    "Supabase vault requested but feature not enabled, falling back to local vault"
+                );
             }
         }
 
@@ -207,7 +217,7 @@ impl ComprehensiveTestExecution {
 
     /// Initialize LLM provider with fallback strategy
     async fn initialize_llm_provider(
-        vault: Arc<dyn KeyVaultProvider>
+        vault: Arc<dyn KeyVaultProvider>,
     ) -> TestResult<Arc<dyn LlmTestProvider>> {
         let llm_config = LlmTestProviderConfig {
             provider_type: TestProviderType::OpenAi,
@@ -223,7 +233,7 @@ impl ComprehensiveTestExecution {
         if vault.get_secret("openai_api_key").await.is_ok() {
             info!("🤖 Using OpenAI GPT-5 provider");
             let provider = OpenAiTestProvider::new(llm_config, vault).await?;
-            return Ok(Arc::new(provider));
+            return Ok(Arc::new(provider) as Arc<dyn LlmTestProvider>);
         }
 
         // Fallback to mock provider
@@ -235,7 +245,7 @@ impl ComprehensiveTestExecution {
                 "Mock GPT-5 response with simulated functionality.".to_string(),
             ],
         );
-        Ok(Arc::new(provider))
+        Ok(Arc::new(provider) as Arc<dyn LlmTestProvider>)
     }
 
     /// Run all test phases for comprehensive coverage
@@ -281,7 +291,8 @@ impl ComprehensiveTestExecution {
 
         // Phase 8: Generate comprehensive report
         info!("📝 Phase 8: Report Generation");
-        self.generate_final_report(test_cases, coverage_report, start_time).await?;
+        self.generate_final_report(test_cases, coverage_report, start_time)
+            .await?;
 
         Ok(())
     }
@@ -291,21 +302,25 @@ impl ComprehensiveTestExecution {
         let mut test_cases = Vec::new();
 
         // Test 1: Simple question answering
-        let test_case = self.execute_test_case(
-            "simple_qa",
-            "basic",
-            "What is the capital of France?",
-            vec!["Paris".to_string(), "Paris, France".to_string()],
-        ).await?;
+        let test_case = self
+            .execute_test_case(
+                "simple_qa",
+                "basic",
+                "What is the capital of France?",
+                vec!["Paris".to_string(), "Paris, France".to_string()],
+            )
+            .await?;
         test_cases.push(test_case);
 
         // Test 2: Math problem solving
-        let test_case = self.execute_test_case(
-            "math_problem",
-            "basic",
-            "Calculate 15 * 23 + 7",
-            vec!["352".to_string(), "15 * 23 + 7 = 352".to_string()],
-        ).await?;
+        let test_case = self
+            .execute_test_case(
+                "math_problem",
+                "basic",
+                "Calculate 15 * 23 + 7",
+                vec!["352".to_string(), "15 * 23 + 7 = 352".to_string()],
+            )
+            .await?;
         test_cases.push(test_case);
 
         // Test 3: Text summarization
@@ -317,9 +332,14 @@ impl ComprehensiveTestExecution {
         ).await?;
         test_cases.push(test_case);
 
-        info!("✅ Basic functionality tests completed: {}/{} passed",
-              test_cases.iter().filter(|tc| matches!(tc.status, TestStatus::Passed)).count(),
-              test_cases.len());
+        info!(
+            "✅ Basic functionality tests completed: {}/{} passed",
+            test_cases
+                .iter()
+                .filter(|tc| matches!(tc.status, TestStatus::Passed))
+                .count(),
+            test_cases.len()
+        );
 
         Ok(test_cases)
     }
@@ -329,26 +349,39 @@ impl ComprehensiveTestExecution {
         let mut test_cases = Vec::new();
 
         // Test factual accuracy
-        let test_case = self.execute_test_case(
-            "factual_accuracy",
-            "accuracy",
-            "What year did World War II end?",
-            vec!["1945".to_string()],
-        ).await?;
+        let test_case = self
+            .execute_test_case(
+                "factual_accuracy",
+                "accuracy",
+                "What year did World War II end?",
+                vec!["1945".to_string()],
+            )
+            .await?;
         test_cases.push(test_case);
 
         // Test reasoning accuracy
-        let test_case = self.execute_test_case(
-            "logical_reasoning",
-            "accuracy",
-            "If all roses are flowers and all flowers are plants, are all roses plants?",
-            vec!["yes".to_string(), "true".to_string(), "all roses are plants".to_string()],
-        ).await?;
+        let test_case = self
+            .execute_test_case(
+                "logical_reasoning",
+                "accuracy",
+                "If all roses are flowers and all flowers are plants, are all roses plants?",
+                vec![
+                    "yes".to_string(),
+                    "true".to_string(),
+                    "all roses are plants".to_string(),
+                ],
+            )
+            .await?;
         test_cases.push(test_case);
 
-        info!("🎯 Accuracy tests completed: {}/{} passed",
-              test_cases.iter().filter(|tc| matches!(tc.status, TestStatus::Passed)).count(),
-              test_cases.len());
+        info!(
+            "🎯 Accuracy tests completed: {}/{} passed",
+            test_cases
+                .iter()
+                .filter(|tc| matches!(tc.status, TestStatus::Passed))
+                .count(),
+            test_cases.len()
+        );
 
         Ok(test_cases)
     }
@@ -358,17 +391,28 @@ impl ComprehensiveTestExecution {
         let mut test_cases = Vec::new();
 
         // Test response latency
-        let test_case = self.execute_test_case(
-            "response_latency",
-            "performance",
-            "Generate a short poem about technology.",
-            vec!["technology".to_string(), "digital".to_string(), "innovation".to_string()],
-        ).await?;
+        let test_case = self
+            .execute_test_case(
+                "response_latency",
+                "performance",
+                "Generate a short poem about technology.",
+                vec![
+                    "technology".to_string(),
+                    "digital".to_string(),
+                    "innovation".to_string(),
+                ],
+            )
+            .await?;
         test_cases.push(test_case);
 
-        info!("⚡ Performance tests completed: {}/{} passed",
-              test_cases.iter().filter(|tc| matches!(tc.status, TestStatus::Passed)).count(),
-              test_cases.len());
+        info!(
+            "⚡ Performance tests completed: {}/{} passed",
+            test_cases
+                .iter()
+                .filter(|tc| matches!(tc.status, TestStatus::Passed))
+                .count(),
+            test_cases.len()
+        );
 
         Ok(test_cases)
     }
@@ -378,17 +422,28 @@ impl ComprehensiveTestExecution {
         let mut test_cases = Vec::new();
 
         // Test cost efficiency
-        let test_case = self.execute_test_case(
-            "cost_efficiency",
-            "cost",
-            "Write a haiku about programming.",
-            vec!["programming".to_string(), "code".to_string(), "haiku".to_string()],
-        ).await?;
+        let test_case = self
+            .execute_test_case(
+                "cost_efficiency",
+                "cost",
+                "Write a haiku about programming.",
+                vec![
+                    "programming".to_string(),
+                    "code".to_string(),
+                    "haiku".to_string(),
+                ],
+            )
+            .await?;
         test_cases.push(test_case);
 
-        info!("💰 Cost analysis tests completed: {}/{} passed",
-              test_cases.iter().filter(|tc| matches!(tc.status, TestStatus::Passed)).count(),
-              test_cases.len());
+        info!(
+            "💰 Cost analysis tests completed: {}/{} passed",
+            test_cases
+                .iter()
+                .filter(|tc| matches!(tc.status, TestStatus::Passed))
+                .count(),
+            test_cases.len()
+        );
 
         Ok(test_cases)
     }
@@ -402,7 +457,11 @@ impl ComprehensiveTestExecution {
             test_id: Uuid::new_v4(),
             name: "vault_security_check".to_string(),
             category: "security".to_string(),
-            status: if self.vault.health_check().await.is_ok() { TestStatus::Passed } else { TestStatus::Failed },
+            status: if self.vault.health_check().await.is_ok() {
+                TestStatus::Passed
+            } else {
+                TestStatus::Failed
+            },
             started_at: Utc::now(),
             duration: Duration::from_millis(100),
             evaluations: vec![],
@@ -412,9 +471,14 @@ impl ComprehensiveTestExecution {
         };
         test_cases.push(vault_health_test);
 
-        info!("🔒 Security tests completed: {}/{} passed",
-              test_cases.iter().filter(|tc| matches!(tc.status, TestStatus::Passed)).count(),
-              test_cases.len());
+        info!(
+            "🔒 Security tests completed: {}/{} passed",
+            test_cases
+                .iter()
+                .filter(|tc| matches!(tc.status, TestStatus::Passed))
+                .count(),
+            test_cases.len()
+        );
 
         Ok(test_cases)
     }
@@ -424,17 +488,24 @@ impl ComprehensiveTestExecution {
         let mut test_cases = Vec::new();
 
         // Test empty input handling
-        let test_case = self.execute_test_case(
-            "empty_input_handling",
-            "edge_cases",
-            "",
-            vec!["empty".to_string(), "no input".to_string()],
-        ).await?;
+        let test_case = self
+            .execute_test_case(
+                "empty_input_handling",
+                "edge_cases",
+                "",
+                vec!["empty".to_string(), "no input".to_string()],
+            )
+            .await?;
         test_cases.push(test_case);
 
-        info!("🚨 Error handling tests completed: {}/{} passed",
-              test_cases.iter().filter(|tc| matches!(tc.status, TestStatus::Passed)).count(),
-              test_cases.len());
+        info!(
+            "🚨 Error handling tests completed: {}/{} passed",
+            test_cases
+                .iter()
+                .filter(|tc| matches!(tc.status, TestStatus::Passed))
+                .count(),
+            test_cases.len()
+        );
 
         Ok(test_cases)
     }
@@ -473,9 +544,11 @@ impl ComprehensiveTestExecution {
             Ok(response) => {
                 // Simple evaluation for this example
                 let response_content = &response.content;
-                let has_expected = expected_answers.iter().any(|expected|
-                    response_content.to_lowercase().contains(&expected.to_lowercase())
-                );
+                let has_expected = expected_answers.iter().any(|expected| {
+                    response_content
+                        .to_lowercase()
+                        .contains(&expected.to_lowercase())
+                });
 
                 // Performance metrics
                 let performance = Some(PerformanceMetrics {
@@ -530,11 +603,17 @@ impl ComprehensiveTestExecution {
 
         match self.coverage_analyzer.analyze().await {
             Ok(report) => {
-                info!("✅ Coverage analysis completed: {:.1}% coverage", report.overall.line_coverage);
+                info!(
+                    "✅ Coverage analysis completed: {:.1}% coverage",
+                    report.overall.line_coverage
+                );
                 Ok(Some(report))
             }
             Err(e) => {
-                warn!("Coverage analysis failed (this is expected without cargo-tarpaulin): {}", e);
+                warn!(
+                    "Coverage analysis failed (this is expected without cargo-tarpaulin): {}",
+                    e
+                );
                 Ok(None)
             }
         }
@@ -550,11 +629,10 @@ impl ComprehensiveTestExecution {
         info!("📝 Generating comprehensive test report...");
 
         // Build the complete report
-        let mut builder = ReportBuilder::new()
-            .with_git_info(
-                env::var("GITHUB_SHA").ok(),
-                env::var("GITHUB_REF_NAME").ok(),
-            );
+        let mut builder = ReportBuilder::new().with_git_info(
+            env::var("GITHUB_SHA").ok(),
+            env::var("GITHUB_REF_NAME").ok(),
+        );
 
         // Add all test cases
         for test_case in test_cases {
@@ -575,11 +653,14 @@ impl ComprehensiveTestExecution {
 
         // Save markdown report
         let report_path = "target/integration-test-report.md";
-        tokio::fs::write(report_path, &markdown_content).await
-            .map_err(|e| TestError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to save markdown report: {}", e)
-            )))?;
+        tokio::fs::write(report_path, &markdown_content)
+            .await
+            .map_err(|e| {
+                TestError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to save markdown report: {}", e),
+                ))
+            })?;
 
         // Generate JSON report for programmatic access
         let json_generator = JsonReportGenerator::new(true);
@@ -587,11 +668,14 @@ impl ComprehensiveTestExecution {
 
         // Save JSON report
         let json_path = "target/integration-test-report.json";
-        tokio::fs::write(json_path, &json_content).await
-            .map_err(|e| TestError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to save JSON report: {}", e)
-            )))?;
+        tokio::fs::write(json_path, &json_content)
+            .await
+            .map_err(|e| {
+                TestError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to save JSON report: {}", e),
+                ))
+            })?;
 
         let total_time = start_time.elapsed().unwrap_or_default();
 
@@ -599,30 +683,39 @@ impl ComprehensiveTestExecution {
         info!("📄 Markdown report: {}", report_path);
         info!("📊 JSON report: {}", json_path);
         info!("⏱️ Total execution time: {:.2}s", total_time.as_secs_f64());
-        info!("🎯 Test results: {}/{} passed ({:.1}% success rate)",
-              report.summary.passed_tests,
-              report.summary.total_tests,
-              report.summary.pass_rate * 100.0);
+        info!(
+            "🎯 Test results: {}/{} passed ({:.1}% success rate)",
+            report.summary.passed_tests,
+            report.summary.total_tests,
+            report.summary.pass_rate * 100.0
+        );
 
         // Print summary to console
         println!("\n{}", "=".repeat(80));
         println!("🚀 RLM COMPREHENSIVE INTEGRATION TEST RESULTS (GPT-5 FOCUS)");
         println!("{}", "=".repeat(80));
-        println!("📊 Tests: {}/{} passed ({:.1}% success)",
-                 report.summary.passed_tests,
-                 report.summary.total_tests,
-                 report.summary.pass_rate * 100.0);
+        println!(
+            "📊 Tests: {}/{} passed ({:.1}% success)",
+            report.summary.passed_tests,
+            report.summary.total_tests,
+            report.summary.pass_rate * 100.0
+        );
 
         if let Some(coverage) = &report.coverage {
-            println!("📈 Coverage: {:.1}% ({}/{} lines)",
-                     coverage.overall.line_coverage,
-                     coverage.overall.covered_lines,
-                     coverage.overall.total_lines);
+            println!(
+                "📈 Coverage: {:.1}% ({}/{} lines)",
+                coverage.overall.line_coverage,
+                coverage.overall.covered_lines,
+                coverage.overall.total_lines
+            );
         }
 
         println!("💰 Total Cost: ${:.4}", report.cost_analysis.total_cost);
         println!("⏱️ Total Time: {:.2}s", total_time.as_secs_f64());
-        println!("🔐 Security Score: {:.1}/10", report.security_audit.overall_security_score * 10.0);
+        println!(
+            "🔐 Security Score: {:.1}/10",
+            report.security_audit.overall_security_score * 10.0
+        );
         println!("{}", "=".repeat(80));
 
         Ok(())

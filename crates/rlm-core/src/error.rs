@@ -40,6 +40,10 @@ pub enum RlmError {
     /// Generic error.
     #[error("{0}")]
     Other(String),
+
+    /// Feature not implemented.
+    #[error("Not implemented: {0}")]
+    NotImplemented(String),
 }
 
 /// RLM result type.

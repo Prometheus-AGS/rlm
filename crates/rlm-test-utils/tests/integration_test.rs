@@ -11,10 +11,15 @@ use tokio;
 use tracing_test::traced_test;
 
 use rlm_test_utils::{
-    AccuracyEvaluator, CostEvaluator, CoverageAnalyzer, CoverageConfig, KeyVaultProvider,
-    LlmTestFramework, LlmTestProvider, LlmTestProviderConfig, LocalVaultProvider,
-    PerformanceEvaluator, ResponseEvaluator, TestConfig, TestFramework, TestResult, VaultFactory,
+    AccuracyEvaluator, CostEvaluator, KeyVaultProvider, LlmTestFramework, LocalVaultProvider,
+    PerformanceEvaluator, ResponseEvaluator, TestFramework, TestResult,
 };
+
+// Import items from their specific modules
+use rlm_test_utils::coverage::{CoverageAnalyzer, CoverageConfig};
+use rlm_test_utils::framework::TestConfig;
+use rlm_test_utils::providers::{LlmTestProvider, LlmTestProviderConfig};
+use rlm_test_utils::vault::VaultFactory;
 
 use rlm_test_utils::providers::{
     ChatMessage, CompletionRequest, MockLlmProvider, TestProviderType,
@@ -23,7 +28,6 @@ use rlm_test_utils::providers::{
 #[cfg(feature = "supabase-vault")]
 use rlm_test_utils::SupabaseVaultProvider;
 
-use chrono::Duration;
 use rlm_core::{ExecutionMetadata, RlmRequest, RlmResponse};
 use std::collections::HashMap;
 use std::time::SystemTime;
@@ -189,14 +193,18 @@ async fn test_complete_framework_workflow() -> TestResult<()> {
 
     // Create test configuration
     let test_config = TestConfig {
-        max_concurrent_tests: 5,
-        default_timeout: Duration::seconds(30).to_std().unwrap(),
-        retry_failed_tests: true,
+        environment: "test".to_string(),
+        timeout_seconds: 30,
         max_retries: 2,
-        coverage_threshold: 80.0,
-        performance_threshold: 0.8,
-        cost_budget_daily: 50.0,
-        enable_detailed_logging: true,
+        retry_delay_ms: 1000,
+        parallel_execution: false,
+        test_data_dir: None,
+        coverage_thresholds: rlm_test_utils::framework::CoverageThresholds {
+            line_coverage_min: 80.0,
+            branch_coverage_min: 75.0,
+            function_coverage_min: 80.0,
+        },
+        llm_providers: HashMap::new(),
     };
 
     // Create testing framework
@@ -210,7 +218,7 @@ async fn test_complete_framework_workflow() -> TestResult<()> {
             .to_string(),
     ];
     let llm_config = LlmTestProviderConfig {
-        provider_type: rlm_test_utils::TestProviderType::Mock,
+        provider_type: TestProviderType::Mock,
         model: "mock-gpt-5".to_string(),
         api_key_vault_key: "openai_api_key".to_string(),
         base_url: None,
@@ -303,12 +311,18 @@ async fn test_complete_framework_workflow() -> TestResult<()> {
 async fn test_coverage_analyzer() -> TestResult<()> {
     let temp_dir = TempDir::new()?;
     let coverage_config = CoverageConfig {
-        target_directory: temp_dir.path().to_path_buf(),
-        include_patterns: vec!["src/**/*.rs".to_string()],
-        exclude_patterns: vec!["tests/**/*.rs".to_string(), "examples/**/*.rs".to_string()],
-        minimum_coverage: 80.0,
-        output_format: "json".to_string(),
-        timeout: Duration::minutes(10).to_std().unwrap(),
+        output_dir: temp_dir.path().to_path_buf(),
+        engine: rlm_test_utils::coverage::CoverageEngine::Llvm,
+        output_formats: vec![rlm_test_utils::coverage::CoverageFormat::Json],
+        include_packages: vec!["rlm-core".to_string()],
+        exclude_files: vec!["tests/**/*.rs".to_string(), "examples/**/*.rs".to_string()],
+        thresholds: rlm_test_utils::coverage::CoverageThresholds {
+            line_coverage: 80.0,
+            branch_coverage: 75.0,
+            function_coverage: 80.0,
+        },
+        branch_coverage: true,
+        timeout_seconds: 600,
     };
 
     let analyzer = CoverageAnalyzer::new(coverage_config);
@@ -317,10 +331,10 @@ async fn test_coverage_analyzer() -> TestResult<()> {
     // but demonstrates the API usage
     match analyzer.analyze().await {
         Ok(report) => {
-            println!("Coverage: {:.1}%", report.total_coverage);
+            println!("Coverage: {:.1}%", report.overall.line_coverage);
             println!(
                 "Lines covered: {}/{}",
-                report.lines_covered, report.lines_total
+                report.overall.covered_lines, report.overall.total_lines
             );
         }
         Err(e) => {

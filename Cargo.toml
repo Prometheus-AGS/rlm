@@ -7,6 +7,8 @@ members = [
     "crates/rlm-ffi",
     "crates/rlm-uar-adapter",
     "crates/rlm-test-utils",
+    "crates/rlm-tests",
+    "crates/rlm-py",
 ]
 
 [workspace.package]

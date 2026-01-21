@@ -6,5 +6,19 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+rlm-core = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+futures = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+async-stream = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+
 [lints]
 workspace = true

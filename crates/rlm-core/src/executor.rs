@@ -2,8 +2,9 @@
 
 use crate::{
     ports::{EventSink, LlmProvider, NullEventSink, ReplBackend},
-    ExecutionMetadata, RlmConfig, RlmError, RlmEvent, RlmEventData, RlmRequest, RlmResponse, RlmResult, SessionManager,
-    ReplResult, CallStatus, ProgressTracker, BackendRouter, OptimizedContextProcessor,
+    BackendRouter, CallStatus, ExecutionMetadata, OptimizedContextProcessor, ProgressTracker,
+    ReplResult, RlmConfig, RlmError, RlmEvent, RlmEventData, RlmRequest, RlmResponse, RlmResult,
+    SessionManager,
 };
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -57,7 +58,9 @@ where
             repl: Arc::new(tokio::sync::Mutex::new(repl)),
             llm: Arc::new(llm),
             event_sink: Arc::new(NullEventSink),
-            session_manager: Arc::new(tokio::sync::Mutex::new(SessionManager::new(session_timeout))),
+            session_manager: Arc::new(tokio::sync::Mutex::new(SessionManager::new(
+                session_timeout,
+            ))),
             progress_tracker: None,
             backend_router: None,
             context_processor: None,
@@ -181,7 +184,12 @@ where
         }
     }
 
-    async fn execute_inner(&self, request: RlmRequest, request_id: &str, session_id: &str) -> RlmResult<RlmResponse> {
+    async fn execute_inner(
+        &self,
+        request: RlmRequest,
+        request_id: &str,
+        session_id: &str,
+    ) -> RlmResult<RlmResponse> {
         let started_at = SystemTime::now();
 
         debug!("Stage 1: Offloading context to REPL");
@@ -205,8 +213,9 @@ where
             }
         }
 
-        let (answer, iterations, recursive_calls, total_tokens) =
-            self.stage2_llm_execution(&request, request_id, session_id, 0).await?;
+        let (answer, iterations, recursive_calls, total_tokens) = self
+            .stage2_llm_execution(&request, request_id, session_id, 0)
+            .await?;
 
         debug!("Stage 3: Final aggregation");
 
@@ -259,7 +268,11 @@ where
         Ok(response)
     }
 
-    async fn stage1_context_offload(&self, request: &RlmRequest, request_id: &str) -> RlmResult<()> {
+    async fn stage1_context_offload(
+        &self,
+        request: &RlmRequest,
+        request_id: &str,
+    ) -> RlmResult<()> {
         let mut repl = self.repl.lock().await;
 
         // Reset REPL to clean state and emit event
@@ -276,7 +289,7 @@ where
                     iteration: 0,
                     code: "reset()".to_string(),
                     result: ReplResult::Success {
-                        value: "REPL reset successfully".to_string()
+                        value: "REPL reset successfully".to_string(),
                     },
                 },
             })
@@ -284,7 +297,10 @@ where
 
         // Preprocess context if performance optimization is enabled
         if let Some(ref processor) = self.context_processor {
-            debug!("Using optimized context processing for {} bytes", request.context.len());
+            debug!(
+                "Using optimized context processing for {} bytes",
+                request.context.len()
+            );
             let processed = processor.process_context(&request.context).await?;
 
             // Emit processing performance metrics
@@ -300,7 +316,8 @@ where
                             processed.processing_time_ms,
                             processed.cache_hit,
                             processed.compression_ratio
-                        ).len(),
+                        )
+                        .len(),
                         processed: true,
                     },
                 })
@@ -316,7 +333,10 @@ where
         }
 
         // Set context variable and emit event
-        debug!("Setting context variable with {} bytes", request.context.len());
+        debug!(
+            "Setting context variable with {} bytes",
+            request.context.len()
+        );
         repl.set_variable("context", &request.context).await?;
 
         // Emit REPL set variable operation event
@@ -329,7 +349,7 @@ where
                     iteration: 0,
                     code: format!("context = <{} bytes of data>", request.context.len()),
                     result: ReplResult::Success {
-                        value: "Context variable set successfully".to_string()
+                        value: "Context variable set successfully".to_string(),
                     },
                 },
             })
@@ -384,12 +404,14 @@ where
 
         // Start tracking with ProgressTracker if available
         if let Some(ref tracker) = self.progress_tracker {
-            tracker.start_call(
-                call_id.clone(),
-                None, // No parent for root calls - this could be enhanced later
-                depth,
-                prompt_tokens,
-            ).await?;
+            tracker
+                .start_call(
+                    call_id.clone(),
+                    None, // No parent for root calls - this could be enhanced later
+                    depth,
+                    prompt_tokens,
+                )
+                .await?;
         }
 
         let chat_request = crate::types::ChatCompletionRequest {
@@ -427,11 +449,9 @@ where
 
         // Update progress tracker to show LLM call in progress
         if let Some(ref tracker) = self.progress_tracker {
-            tracker.update_call_progress(
-                &call_id,
-                50.0,
-                "Executing LLM request".to_string(),
-            ).await?;
+            tracker
+                .update_call_progress(&call_id, 50.0, "Executing LLM request".to_string())
+                .await?;
         }
 
         let response = match self.execute_llm_call(&chat_request).await {
@@ -440,23 +460,32 @@ where
                 // Mark call as failed in progress tracker
                 if let Some(ref tracker) = self.progress_tracker {
                     if let Err(track_err) = tracker.fail_call(&call_id, e.to_string()).await {
-                        warn!("Failed to update progress tracker for failed call: {}", track_err);
+                        warn!(
+                            "Failed to update progress tracker for failed call: {}",
+                            track_err
+                        );
                     }
                 }
                 return Err(e);
             }
         };
 
-        let answer = response.choices.first()
+        let answer = response
+            .choices
+            .first()
             .ok_or_else(|| RlmError::Other("No response from LLM".to_string()))?
-            .message.content.clone();
+            .message
+            .content
+            .clone();
 
         // Add token usage
         total_tokens += response.usage.total_tokens;
 
         // Complete call tracking with actual token usage
         if let Some(ref tracker) = self.progress_tracker {
-            tracker.complete_call(&call_id, response.usage.completion_tokens).await?;
+            tracker
+                .complete_call(&call_id, response.usage.completion_tokens)
+                .await?;
         }
 
         // Emit recursive call completed event
@@ -526,16 +555,22 @@ where
                 })
                 .await?;
 
-            debug!("Emitted chunk {} of {}: '{}...'",
-                   i + 1, chunks.len(),
-                   &chunk.chars().take(20).collect::<String>());
+            debug!(
+                "Emitted chunk {} of {}: '{}...'",
+                i + 1,
+                chunks.len(),
+                &chunk.chars().take(20).collect::<String>()
+            );
         }
 
         Ok(())
     }
 
     /// Execute an LLM call using the backend router if available, or the direct LLM provider otherwise.
-    async fn execute_llm_call(&self, request: &crate::types::ChatCompletionRequest) -> RlmResult<crate::types::ChatCompletionResponse> {
+    async fn execute_llm_call(
+        &self,
+        request: &crate::types::ChatCompletionRequest,
+    ) -> RlmResult<crate::types::ChatCompletionResponse> {
         if let Some(ref router) = self.backend_router {
             debug!("Using backend router for LLM call");
             router.route_request(request).await
@@ -547,12 +582,43 @@ where
 
     fn build_prompt(&self, query: &str) -> String {
         format!(
-            "You have access to a REPL environment with the following variable:\n\
-             - context: The full context for this task\n\n\
-             You can call llm_query(sub_query) to recursively decompose the task.\n\n\
-             Task: {}\n\n\
-             Provide your answer:",
-            query
+            r#"You have access to a Rhai REPL environment with the following variables and functions:
+
+## Available Variables
+- `context`: The full context for this task (string)
+
+## Rhai Syntax Examples
+
+### String Operations
+```rhai
+let text = context;
+let length = text.len();                    // Get string length
+let upper = text.to_upper();                // Convert to uppercase
+let contains = text.contains("needle");     // Check if contains substring
+let lines = text.split('\n');               // Split into array
+let slice = text.sub_string(0, 100);        // Get substring
+```
+
+### Array Operations
+```rhai
+let items = [1, 2, 3, 4, 5];
+let sum = items.reduce(|a, b| a + b, 0);    // Sum all elements
+let filtered = items.filter(|x| x > 2);      // Filter elements
+let mapped = items.map(|x| x * 2);           // Transform elements
+let first = items[0];                        // Access by index
+```
+
+### Recursive Decomposition
+```rhai
+// For complex tasks, decompose into sub-queries
+let result = llm_query("Sub-question about part of the context");
+```
+
+## Your Task
+{query}
+
+Analyze the context and provide your answer. Use REPL operations when helpful for processing large data."#,
+            query = query
         )
     }
 }

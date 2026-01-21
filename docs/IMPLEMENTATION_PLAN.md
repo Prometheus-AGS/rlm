@@ -1830,6 +1830,90 @@ async fn my_function(&self, id: &str, sensitive_data: &str) -> Result<()> {
 
 ---
 
+---
+
+### Phase 10: Coding Standards & Core Finalization (Week 5, Day 1-2)
+
+**Objective**: Audit and finalize `rlm-core` against internal coding standards.
+
+**Inputs**: `docs/coding-standards/README.md`, `rlm-core`
+
+**Steps**:
+
+1. **Audit Tracing**: Ensure all spans and events follow `M-LOG-STRUCTURED`.
+2. **Audit Errors**: Verify `M-ERRORS-CANONICAL-STRUCTS` in all modules.
+3. **Async Hygiene**: Insert `tokio::task::yield_now()` in recursive loops (`M-YIELD-POINTS`).
+4. **Docs**: Ensure 100% coverage of public items (`M-MODULE-DOCS`).
+
+**Verification**:
+- Manual code review against checklist.
+- `cargo doc --open` to verify readability.
+
+---
+
+### Phase 11: Rhai REPL Enhancements & JS Support (Week 5, Day 3-5)
+
+**Objective**: Fully implement Rhai REPL with prompts and WASM support.
+
+**Inputs**: Recommendations Report
+
+**Steps**:
+
+1. **Prompt Engineering**:
+   - Update `executor.rs` system prompt.
+   - Inject Rhai few-shot examples (slicing, regex).
+2. **WASM Compatibility**:
+   - Ensure `rlm-repl-rhai` compiles to `wasm32-unknown-unknown`.
+   - Verify `Rhai` engine initialization in WASM environment.
+3. **JS wrapper**:
+   - Create a TypeScript wrapper around the WASM bindings for easy usage.
+
+**Coding Standards**:
+- ✅ M-INTEROP-WASM
+
+---
+
+### Phase 12: Polyglot FFI Bindings (Week 6)
+
+**Objective**: Enable Python (PyO3) and TypeScript consumption.
+
+**Inputs**: `rlm-core`, `rlm-ffi`
+
+**Steps**:
+
+1. **Python Bindings (`rlm-py`)**:
+   - Initialize new crate `crates/rlm-py`.
+   - Dependencies: `pyo3`, `pyo3-asyncio`.
+   - Expose `RlmExecutor` as a Python class.
+   - Map `RlmConfig` to Python arguments.
+
+   ```rust
+   use pyo3::prelude::*;
+
+   #[pyclass]
+   struct PyRlmExecutor { inner: RlmExecutor }
+
+   #[pymethods]
+   impl PyRlmExecutor {
+       #[new]
+       fn new() -> Self { ... }
+       
+       fn execute<'p>(&self, py: Python<'p>, query: String) -> PyResult<&'p PyAny> {
+           // bridging logic
+       }
+   }
+   ```
+
+2. **TypeScript Bindings**:
+   - Enhances `rlm-ffi` (Phase 6).
+   - Generate type definitions (`.d.ts`) using `wasm-bindgen-typescript-definitions` or similar.
+
+**Verification**:
+- `maturin develop` inside `crates/rlm-py`.
+- Run Python script: `import rlm; rlm.execute(...)`.
+
+---
+
 ## Summary Timeline
 
 | Week | Phase | Deliverable |
@@ -1838,9 +1922,12 @@ async fn my_function(&self, id: &str, sensitive_data: &str) -> Result<()> {
 | 2 | 4-5 | Rhai backend, HTTP server |
 | 3 | 6-7 | WASM FFI, UAR adapter |
 | 4 | 8-9 | Tests, benchmarks, docs |
+| 5 | 10-11 | Standards Audit, Rhai/JS REPL |
+| 6 | 12 | Polyglot FFI (Python/TS) |
 
-**Target**: Production-ready v0.1 by end of Week 4.
+**Target**: Production-ready v0.1 by end of Week 6.
 
 ---
 
 **Next Steps**: Begin Phase 0 (workspace initialization).
+
