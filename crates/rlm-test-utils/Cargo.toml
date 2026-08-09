@@ -34,7 +34,7 @@ postgrest = { version = "1.0", optional = true }
 # Testing framework
 rstest = "0.18"
 mockito = "1.2"
-wiremock = "0.5"
+wiremock = "0.6"
 tempfile = "3.8"
 
 # RLM dependencies
