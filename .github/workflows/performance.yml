@@ -178,7 +178,7 @@ jobs:
         fi
     
     - name: Upload performance results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v6
       with:
         name: integration-performance-results
         path: |
@@ -224,7 +224,7 @@ jobs:
         fi
     
     - name: Upload paper validation results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v6
       with:
         name: paper-validation-results
         path: tests/paper_validation_results.txt
@@ -353,7 +353,7 @@ jobs:
         RLM_LLM_API_KEY: "test-key-for-profiling"
     
     - name: Upload profiling results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v6
       with:
         name: memory-profiling-results
         path: valgrind_output.txt

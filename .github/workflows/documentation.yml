@@ -84,7 +84,7 @@ jobs:
         fi
     
     - name: Upload documentation artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v6
       with:
         name: documentation
         path: |
@@ -268,7 +268,7 @@ jobs:
         fi
     
     - name: Upload spell check results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v6
       if: always()
       with:
         name: spell-check-results

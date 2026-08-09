@@ -60,7 +60,7 @@ jobs:
         fi
     
     - name: Upload audit results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v6
       if: always()
       with:
         name: security-audit-results
@@ -186,7 +186,7 @@ jobs:
         GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
     
     - name: Upload GitLeaks results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v6
       if: always()
       with:
         name: gitleaks-report
@@ -213,7 +213,7 @@ jobs:
         cargo cyclonedx --format json --output-pattern "{name}-{version}-sbom.json"
     
     - name: Upload SBOM
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v6
       with:
         name: software-bill-of-materials
         path: "*-sbom.json"
@@ -228,7 +228,7 @@ jobs:
         syft rlm-server:sbom -o spdx-json > docker-sbom.json
     
     - name: Upload Docker SBOM
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v6
       with:
         name: docker-sbom
         path: docker-sbom.json
@@ -281,7 +281,7 @@ jobs:
         fi
     
     - name: Upload license report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v6
       with:
         name: license-report
         path: licenses.json
